@@ -1,5 +1,5 @@
 {
-  "name": "loja-desejos-clientes-frontend",
+  "name": "loja-desejos-clientes",
   "version": "1.0.0",
   "scripts": {
     "dev": "vite",
