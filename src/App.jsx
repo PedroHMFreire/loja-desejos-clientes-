@@ -6,58 +6,47 @@ function App() {
   const [telefone, setTelefone] = useState('');
   const [produto, setProduto] = useState('');
   const [consentimento, setConsentimento] = useState(false);
-  const [produtos, setProdutos] = useState([]);
   const [desejos, setDesejos] = useState([]);
 
-  // Carrega produtos do backend
+  // Carrega desejos do localStorage ao iniciar
   useEffect(() => {
-    fetch('http://localhost:5000/api/produtos')
-      .then(res => res.json())
-      .then(data => setProdutos(data))
-      .catch(err => console.error('Erro ao carregar produtos:', err));
+    const desejosSalvos = localStorage.getItem('desejos');
+    if (desejosSalvos) {
+      setDesejos(JSON.parse(desejosSalvos));
+    }
   }, []);
 
-  // Carrega desejos do backend
+  // Salva desejos no localStorage sempre que a lista mudar
   useEffect(() => {
-    fetch('http://localhost:5000/api/desejos')
-      .then(res => res.json())
-      .then(data => setDesejos(data))
-      .catch(err => console.error('Erro ao carregar desejos:', err));
-  }, []);
+    localStorage.setItem('desejos', JSON.stringify(desejos));
+  }, [desejos]);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!consentimento) {
       alert('O cliente deve consentir com o armazenamento de dados (LGPD).');
       return;
     }
 
-    const desejo = { nome, telefone, produto_id: produto, consentimento_lgpd: consentimento };
-    try {
-      const res = await fetch('http://localhost:5000/api/desejos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(desejo),
-      });
-      if (res.ok) {
-        alert('Desejo registrado com sucesso!');
-        setNome('');
-        setTelefone('');
-        setProduto('');
-        setConsentimento(false);
-        // Atualiza lista de desejos
-        const updatedDesejos = await fetch('http://localhost:5000/api/desejos').then(res => res.json());
-        setDesejos(updatedDesejos);
-      }
-    } catch (err) {
-      console.error('Erro ao registrar desejo:', err);
-      alert('Erro ao registrar desejo.');
-    }
+    const novoDesejo = {
+      id: Date.now(), // ID único baseado no timestamp
+      nome,
+      telefone,
+      produto,
+      consentimento_lgpd: consentimento,
+      data_solicitacao: new Date().toISOString(),
+    };
+
+    setDesejos([...desejos, novoDesejo]);
+    setNome('');
+    setTelefone('');
+    setProduto('');
+    setConsentimento(false);
+    alert('Desejo registrado com sucesso!');
   };
 
   const handleEnviarMensagem = (desejo) => {
-    const produtoNome = produtos.find(p => p.id === desejo.produto_id)?.nome || 'Produto';
-    const mensagem = `Olá ${desejo.nome}, o produto ${produtoNome} está disponível na loja! Entre em contato para mais detalhes.`;
+    const mensagem = `Olá ${desejo.nome}, o produto ${desejo.produto} está disponível na loja! Entre em contato para mais detalhes.`;
     const url = `sms:${desejo.telefone}?body=${encodeURIComponent(mensagem)}`;
     window.location.href = url;
   };
@@ -88,17 +77,14 @@ function App() {
         </div>
         <div className="mb-4">
           <label className="block text-gray-700">Produto Desejado</label>
-          <select
+          <input
+            type="text"
             value={produto}
             onChange={(e) => setProduto(e.target.value)}
             className="w-full p-2 border rounded"
+            placeholder="Digite o nome do produto"
             required
-          >
-            <option value="">Selecione um produto</option>
-            {produtos.map(p => (
-              <option key={p.id} value={p.id}>{p.nome} ({p.codigo})</option>
-            ))}
-          </select>
+          />
         </div>
         <div className="mb-4">
           <label className="flex items-center">
@@ -125,7 +111,8 @@ function App() {
           <div key={d.id} className="bg-white p-4 rounded-lg shadow mb-4">
             <p><strong>Cliente:</strong> {d.nome}</p>
             <p><strong>Telefone:</strong> {d.telefone}</p>
-            <p><strong>Produto:</strong> {produtos.find(p => p.id === d.produto_id)?.nome || 'N/A'}</p>
+            <p><strong>Produto:</strong> {d.produto}</p>
+            <p><strong>Data:</strong> {new Date(d.data_solicitacao).toLocaleDateString('pt-BR')}</p>
             <button
               onClick={() => handleEnviarMensagem(d)}
               className="mt-2 bg-green-500 text-white p-2 rounded hover:bg-green-600"
