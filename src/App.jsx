@@ -7,6 +7,7 @@ function App() {
   const [produto, setProduto] = useState('');
   const [consentimento, setConsentimento] = useState(false);
   const [desejos, setDesejos] = useState([]);
+  const numeroGerente = '5511999999999'; // Substitua pelo número do gerente (formato: +55DDDnumero)
 
   // Carrega desejos do localStorage ao iniciar
   useEffect(() => {
@@ -45,9 +46,15 @@ function App() {
     alert('Desejo registrado com sucesso!');
   };
 
-  const handleEnviarMensagem = (desejo) => {
-    const mensagem = `Olá ${desejo.nome}, o produto ${desejo.produto} está disponível na loja! Entre em contato para mais detalhes.`;
-    const url = `sms:${desejo.telefone}?body=${encodeURIComponent(mensagem)}`;
+  const handleEnviarCliente = (desejo) => {
+    const mensagem = `Oi, ${desejo.nome}. Recebemos o seu pedido e assim que recebermos reposição avisamos você. Qualquer dúvida estou à disposição!`;
+    const url = `whatsapp://send?phone=${desejo.telefone}&text=${encodeURIComponent(mensagem)}`;
+    window.location.href = url;
+  };
+
+  const handleEnviarGerente = (desejo) => {
+    const mensagem = `Cliente ${desejo.nome} busca o produto ${desejo.produto}. Mas não temos em estoque. Aguardo uma posição da produção.`;
+    const url = `whatsapp://send?phone=${numeroGerente}&text=${encodeURIComponent(mensagem)}`;
     window.location.href = url;
   };
 
@@ -56,7 +63,7 @@ function App() {
       <h1 className="text-2xl font-bold mb-4 text-center">Registrar Desejo do Cliente</h1>
       <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-lg max-w-md mx-auto mb-8">
         <div className="mb-4">
-          <label className="block text-gray-700">Nome do Cliente</label>
+          <label className="block text-gray-700">Nome Completo do Cliente</label>
           <input
             type="text"
             value={nome}
@@ -113,12 +120,20 @@ function App() {
             <p><strong>Telefone:</strong> {d.telefone}</p>
             <p><strong>Produto:</strong> {d.produto}</p>
             <p><strong>Data:</strong> {new Date(d.data_solicitacao).toLocaleDateString('pt-BR')}</p>
-            <button
-              onClick={() => handleEnviarMensagem(d)}
-              className="mt-2 bg-green-500 text-white p-2 rounded hover:bg-green-600"
-            >
-              Enviar para o Cliente
-            </button>
+            <div className="flex space-x-2 mt-2">
+              <button
+                onClick={() => handleEnviarCliente(d)}
+                className="flex-1 bg-green-500 text-white p-2 rounded hover:bg-green-600"
+              >
+                Enviar para Cliente
+              </button>
+              <button
+                onClick={() => handleEnviarGerente(d)}
+                className="flex-1 bg-yellow-500 text-white p-2 rounded hover:bg-yellow-600"
+              >
+                Enviar para Gerente
+              </button>
+            </div>
           </div>
         ))}
       </div>
