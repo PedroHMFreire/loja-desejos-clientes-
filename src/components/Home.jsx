@@ -1,194 +1,59 @@
-import { useState, useEffect } from 'react';
+/* src/components/Home.jsx */
+import { useState, useEffect } from 'react'
 
-function Home({ desejos, setDesejos, vendedores, lojas, categorias }) {
-  const [produto, setProduto] = useState('');
-  const [categoria, setCategoria] = useState('');
-  const [valor, setValor] = useState('');
-  const [nome, setNome] = useState('');
-  const [ddd, setDdd] = useState('');
-  const [numero, setNumero] = useState('');
-  const [vendedor, setVendedor] = useState('');
-  const [loja, setLoja] = useState('');
-  const [consentimento, setConsentimento] = useState(false);
-  const numeroGerente = '5511999999999'; // Substitua pelo número real do gerente
+export default function Home({ desejos, setDesejos, vendedores, lojas, categorias }) {
+  const [form, setForm] = useState({ nome: '', produto: '', vendedor: '', loja: '', categoria: '' })
 
-  useEffect(() => {
-    localStorage.setItem('desejos', JSON.stringify(desejos));
-  }, [desejos]);
+  const handleChange = e => {
+    setForm({ ...form, [e.target.name]: e.target.value })
+  }
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!consentimento) {
-      alert('O cliente deve consentir com o armazenamento de dados (LGPD).');
-      return;
-    }
-    if (!vendedor || !loja || !categoria) {
-      alert('Por favor, preencha todos os campos obrigatórios.');
-      return;
-    }
+  const handleSubmit = e => {
+    e.preventDefault()
+    if (!form.nome || !form.produto || !form.vendedor || !form.loja || !form.categoria) return
+    const novoDesejo = { ...form, id: Date.now() }
+    const atualizados = [...desejos, novoDesejo]
+    setDesejos(atualizados)
+    localStorage.setItem('desejos', JSON.stringify(atualizados))
+    setForm({ nome: '', produto: '', vendedor: '', loja: '', categoria: '' })
+  }
 
-    const telefone = `+55${ddd}${numero}`;
-    const novoDesejo = {
-      id: Date.now(),
-      produto,
-      categoria,
-      valor,
-      nome,
-      telefone,
-      vendedor,
-      loja,
-      consentimento_lgpd: consentimento,
-      status: 'Não Atendido',
-      data_solicitacao: new Date().toISOString(),
-    };
-
-    setDesejos([...desejos, novoDesejo]);
-    setProduto('');
-    setCategoria('');
-    setValor('');
-    setNome('');
-    setDdd('');
-    setNumero('');
-    setVendedor('');
-    setLoja('');
-    setConsentimento(false);
-
-    // Enviar mensagens WhatsApp
-    const mensagemCliente = `Oi, ${nome}. Recebemos o seu pedido e assim que recebermos reposição avisamos você. Qualquer dúvida estou à disposição!`;
-    const mensagemGerente = `Cliente ${nome} busca o produto ${produto}. Mas não temos em estoque. Aguardo uma posição da produção.`;
-    window.location.href = `whatsapp://send?phone=${telefone}&text=${encodeURIComponent(mensagemCliente)}`;
-    setTimeout(() => {
-      window.location.href = `whatsapp://send?phone=${numeroGerente}&text=${encodeURIComponent(mensagemGerente)}`;
-    }, 1000);
-
-    alert('Desejo registrado com sucesso!');
-  };
-
-  const formatarValor = (input) => {
-    const valorNumerico = input.replace(/[^0-9,]/g, '');
-    setValor(valorNumerico ? `R$ ${valorNumerico}` : '');
-  };
+  const handleDelete = id => {
+    const atualizados = desejos.filter(d => d.id !== id)
+    setDesejos(atualizados)
+    localStorage.setItem('desejos', JSON.stringify(atualizados))
+  }
 
   return (
-    <div className="max-w-md mx-auto p-4">
-      <form onSubmit={handleSubmit} className="bg-gray-900 p-6 rounded-lg shadow-lg">
-        <div className="mb-4">
-          <label className="block text-white">Produto Desejado</label>
-          <input
-            type="text"
-            value={produto}
-            onChange={(e) => setProduto(e.target.value)}
-            className="w-full p-2 bg-gray-800 text-white rounded border border-gray-700 focus:border-orange-500"
-            required
-          />
-        </div>
-        <div className="mb-4">
-          <label className="block text-white">Categoria do Produto</label>
-          <select
-            value={categoria}
-            onChange={(e) => setCategoria(e.target.value)}
-            className="w-full p-2 bg-gray-800 text-white rounded border border-gray-700 focus:border-orange-500"
-            required
-          >
-            <option value="">Selecione uma categoria</option>
-            {categorias.map((cat, index) => (
-              <option key={index} value={cat}>{cat}</option>
-            ))}
-          </select>
-        </div>
-        <div className="mb-4">
-          <label className="block text-white">Valor do Produto</label>
-          <input
-            type="text"
-            value={valor}
-            onChange={(e) => formatarValor(e.target.value)}
-            placeholder="R$ 0,00"
-            className="w-full p-2 bg-gray-800 text-white rounded border border-gray-700 focus:border-orange-500"
-            required
-          />
-        </div>
-        <div className="mb-4">
-          <label className="block text-white">Nome Completo do Cliente</label>
-          <input
-            type="text"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-            className="w-full p-2 bg-gray-800 text-white rounded border border-gray-700 focus:border-orange-500"
-            required
-          />
-        </div>
-        <div className="mb-4 flex space-x-2">
-          <div className="w-1/4">
-            <label className="block text-white">DDD</label>
-            <input
-              type="text"
-              value={ddd}
-              onChange={(e) => setDdd(e.target.value.replace(/[^0-9]/g, ''))}
-              maxLength="2"
-              className="w-full p-2 bg-gray-800 text-white rounded border border-gray-700 focus:border-orange-500"
-              required
-            />
-          </div>
-          <div className="w-3/4">
-            <label className="block text-white">WhatsApp do Cliente</label>
-            <input
-              type="text"
-              value={numero}
-              onChange={(e) => setNumero(e.target.value.replace(/[^0-9]/g, ''))}
-              maxLength="9"
-              className="w-full p-2 bg-gray-800 text-white rounded border border-gray-700 focus:border-orange-500"
-              required
-            />
-          </div>
-        </div>
-        <div className="mb-4">
-          <label className="block text-white">Vendedor</label>
-          <select
-            value={vendedor}
-            onChange={(e) => setVendedor(e.target.value)}
-            className="w-full p-2 bg-gray-800 text-white rounded border border-gray-700 focus:border-orange-500"
-            required
-          >
-            <option value="">Selecione um vendedor</option>
-            {vendedores.map((vend, index) => (
-              <option key={index} value={vend}>{vend}</option>
-            ))}
-          </select>
-        </div>
-        <div className="mb-4">
-          <label className="block text-white">Loja</label>
-          <select
-            value={loja}
-            onChange={(e) => setLoja(e.target.value)}
-            className="w-full p-2 bg-gray-800 text-white rounded border border-gray-700 focus:border-orange-500"
-            required
-          >
-            <option value="">Selecione uma loja</option>
-            {lojas.map((lj, index) => (
-              <option key={index} value={lj}>{lj}</option>
-            ))}
-          </select>
-        </div>
-        <div className="mb-4">
-          <label className="flex items-center">
-            <input
-              type="checkbox"
-              checked={consentimento}
-              onChange={(e) => setConsentimento(e.target.checked)}
-              className="mr-2"
-            />
-            <span className="text-white">Cliente consente com armazenamento de dados (LGPD)</span>
-          </label>
-        </div>
-        <button
-          type="submit"
-          className="w-full bg-orange-500 text-white p-2 rounded hover:bg-orange-600 transition-transform transform hover:scale-105"
-        >
-          Registrar
-        </button>
+    <div>
+      <h1 className="text-2xl font-bold mb-4 text-orange-500">Registrar Desejo</h1>
+      <form onSubmit={handleSubmit} className="grid gap-2 mb-6">
+        <input name="nome" value={form.nome} onChange={handleChange} placeholder="Nome do Cliente" className="p-2 bg-gray-800 rounded" />
+        <input name="produto" value={form.produto} onChange={handleChange} placeholder="Produto Desejado" className="p-2 bg-gray-800 rounded" />
+        <select name="vendedor" value={form.vendedor} onChange={handleChange} className="p-2 bg-gray-800 rounded">
+          <option value="">Selecione o Vendedor</option>
+          {vendedores.map(v => <option key={v.cpf} value={v.nome}>{v.nome}</option>)}
+        </select>
+        <select name="loja" value={form.loja} onChange={handleChange} className="p-2 bg-gray-800 rounded">
+          <option value="">Selecione a Loja</option>
+          {lojas.map(l => <option key={l.nome} value={l.nome}>{l.nome}</option>)}
+        </select>
+        <select name="categoria" value={form.categoria} onChange={handleChange} className="p-2 bg-gray-800 rounded">
+          <option value="">Selecione a Categoria</option>
+          {categorias.map(c => <option key={c.nome} value={c.nome}>{c.nome}</option>)}
+        </select>
+        <button type="submit" className="bg-orange-500 p-2 rounded text-white">Adicionar</button>
       </form>
-    </div>
-  );
-}
 
-export default Home;
+      <h2 className="text-xl font-semibold mb-2">Desejos Registrados</h2>
+      <ul className="space-y-2">
+        {desejos.map(d => (
+          <li key={d.id} className="bg-gray-800 p-3 rounded flex justify-between items-center">
+            <span>{d.nome} quer {d.produto} ({d.vendedor})</span>
+            <button onClick={() => handleDelete(d.id)} className="text-red-500">Excluir</button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
