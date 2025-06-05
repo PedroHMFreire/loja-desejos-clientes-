@@ -2,7 +2,16 @@
 import { useState } from 'react'
 
 export default function Home({ desejos, setDesejos, vendedores, lojas, categorias }) {
-  const [form, setForm] = useState({ nome: '', tel: '', produto: '', tamanho: '', vendedor: '', loja: '', categoria: '' })
+  const [form, setForm] = useState({
+    nome: '',
+    tel: '',
+    produto: '',
+    tamanho: '',
+    valor: '',
+    vendedor: '',
+    loja: '',
+    categoria: ''
+  })
 
   const handleChange = e => {
     setForm({ ...form, [e.target.name]: e.target.value })
@@ -10,12 +19,12 @@ export default function Home({ desejos, setDesejos, vendedores, lojas, categoria
 
   const handleSubmit = e => {
     e.preventDefault()
-    if (!form.nome || !form.tel || !form.produto || !form.tamanho || !form.vendedor || !form.loja || !form.categoria) return
-    const novoDesejo = { ...form, id: Date.now() }
+    if (!form.nome || !form.tel || !form.produto || !form.tamanho || !form.valor || !form.vendedor || !form.loja || !form.categoria) return
+    const novoDesejo = { ...form, id: Date.now(), data: new Date().toISOString() }
     const atualizados = [...desejos, novoDesejo]
     setDesejos(atualizados)
     localStorage.setItem('desejos', JSON.stringify(atualizados))
-    setForm({ nome: '', tel: '', produto: '', tamanho: '', vendedor: '', loja: '', categoria: '' })
+    setForm({ nome: '', tel: '', produto: '', tamanho: '', valor: '', vendedor: '', loja: '', categoria: '' })
   }
 
   const handleDelete = id => {
@@ -32,6 +41,7 @@ export default function Home({ desejos, setDesejos, vendedores, lojas, categoria
         <input name="tel" value={form.tel} onChange={handleChange} placeholder="Telefone do Cliente" className="p-2 bg-gray-800 rounded" />
         <input name="produto" value={form.produto} onChange={handleChange} placeholder="Produto Desejado" className="p-2 bg-gray-800 rounded" />
         <input name="tamanho" value={form.tamanho} onChange={handleChange} placeholder="Tamanho do Produto" className="p-2 bg-gray-800 rounded" />
+        <input name="valor" value={form.valor} onChange={handleChange} placeholder="Valor Estimado (R$)" type="number" className="p-2 bg-gray-800 rounded" />
         <select name="vendedor" value={form.vendedor} onChange={handleChange} className="p-2 bg-gray-800 rounded">
           <option value="">Selecione o Vendedor</option>
           {vendedores.map(v => <option key={v.cpf} value={v.nome}>{v.nome}</option>)}
@@ -51,7 +61,7 @@ export default function Home({ desejos, setDesejos, vendedores, lojas, categoria
       <ul className="space-y-2">
         {desejos.map(d => (
           <li key={d.id} className="bg-gray-800 p-3 rounded flex justify-between items-center">
-            <span>{d.nome} quer {d.produto} tamanho {d.tamanho} ({d.vendedor})</span>
+            <span>{d.nome} quer {d.produto} tamanho {d.tamanho} (R$ {d.valor}) ({d.vendedor})</span>
             <button onClick={() => handleDelete(d.id)} className="text-red-500">Excluir</button>
           </li>
         ))}
