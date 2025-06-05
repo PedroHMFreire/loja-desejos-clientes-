@@ -14,6 +14,18 @@ export default function Desejos({ desejos, setDesejos }) {
     localStorage.setItem('desejos', JSON.stringify(atualizados))
   }
 
+  const gerarTexto = (d) =>
+    `Cliente: ${d.nome} (${d.tel})\nProduto: ${d.produto}\nTamanho: ${d.tamanho}\nValor: R$ ${d.valor}\nVendedor: ${d.vendedor}\nLoja: ${d.loja}\nCategoria: ${d.categoria}`
+
+  const mensagemCliente = (d) =>
+    `Olá, ${d.nome}. Foi um prazer receber sua visita. Assim que recebermos o produto desejado, vamos entrar em contato. Abaixo detalhes do produto. Qualquer dúvida estamos à disposição.%0A%0A` +
+    `Produto: ${d.produto}%0ATamanho: ${d.tamanho}%0AValor estimado: R$ ${d.valor}`
+
+  const enviarWhatsapp = (numero, texto) => {
+    const link = `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`
+    window.open(link, '_blank')
+  }
+
   const desejosFiltrados = desejos.filter(d => {
     const vendedorOk = filtros.vendedor ? d.vendedor === filtros.vendedor : true
     const lojaOk = filtros.loja ? d.loja === filtros.loja : true
@@ -43,9 +55,28 @@ export default function Desejos({ desejos, setDesejos }) {
           <li key={d.id} className="bg-gray-800 p-3 rounded">
             <div className="flex flex-col">
               <span className="font-medium">Cliente: {d.nome} ({d.tel})</span>
-              <span>Produto: {d.produto} - Tamanho: {d.tamanho}</span>
+              <span>Produto: {d.produto} - Tamanho: {d.tamanho} - Valor: R$ {d.valor}</span>
               <span>Vendedor: {d.vendedor} | Loja: {d.loja} | Categoria: {d.categoria}</span>
-              <button onClick={() => handleDelete(d.id)} className="text-red-500 text-left mt-2">Excluir</button>
+              <div className="flex gap-4 mt-2 flex-wrap">
+                <button
+                  onClick={() => enviarWhatsapp('', gerarTexto(d))}
+                  className="text-sm text-green-400 underline"
+                >
+                  Enviar para produção
+                </button>
+                <button
+                  onClick={() => enviarWhatsapp(d.tel.replace(/\\D/g, ''), mensagemCliente(d))}
+                  className="text-sm text-blue-400 underline"
+                >
+                  Enviar para cliente
+                </button>
+                <button
+                  onClick={() => handleDelete(d.id)}
+                  className="text-sm text-red-400 underline"
+                >
+                  Excluir
+                </button>
+              </div>
             </div>
           </li>
         ))}
