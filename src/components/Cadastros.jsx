@@ -1,117 +1,75 @@
-import { useState, useEffect } from 'react';
+/* src/components/Cadastros.jsx */
+import { useState, useEffect } from 'react'
 
-function Cadastros({ vendedores, setVendedores, lojas, setLojas, categorias, setCategorias }) {
-  const [novoVendedor, setNovoVendedor] = useState('');
-  const [novaLoja, setNovaLoja] = useState('');
-  const [novaCategoria, setNovaCategoria] = useState('');
+function CadastroSimples({ titulo, campos, lista, setLista, chave }) {
+  const [form, setForm] = useState({})
 
-  useEffect(() => {
-    localStorage.setItem('vendedores', JSON.stringify(vendedores));
-    localStorage.setItem('lojas', JSON.stringify(lojas));
-    localStorage.setItem('categorias', JSON.stringify(categorias));
-  }, [vendedores, lojas, categorias]);
+  const handleChange = e => {
+    setForm({ ...form, [e.target.name]: e.target.value })
+  }
 
-  const handleAddVendedor = (e) => {
-    e.preventDefault();
-    if (novoVendedor && !vendedores.includes(novoVendedor)) {
-      setVendedores([...vendedores, novoVendedor]);
-      setNovoVendedor('');
-    }
-  };
+  const handleSubmit = e => {
+    e.preventDefault()
+    if (Object.values(form).some(v => !v)) return
+    const novaEntrada = { ...form, id: Date.now() }
+    const atualizados = [...lista, novaEntrada]
+    setLista(atualizados)
+    localStorage.setItem(chave, JSON.stringify(atualizados))
+    setForm({})
+  }
 
-  const handleAddLoja = (e) => {
-    e.preventDefault();
-    if (novaLoja && !lojas.includes(novaLoja)) {
-      setLojas([...lojas, novaLoja]);
-      setNovaLoja('');
-    }
-  };
-
-  const handleAddCategoria = (e) => {
-    e.preventDefault();
-    if (novaCategoria && !categorias.includes(novaCategoria)) {
-      setCategorias([...categorias, novaCategoria]);
-      setNovaCategoria('');
-    }
-  };
+  const handleDelete = id => {
+    const atualizados = lista.filter(e => e.id !== id)
+    setLista(atualizados)
+    localStorage.setItem(chave, JSON.stringify(atualizados))
+  }
 
   return (
-    <div className="max-w-md mx-auto p-4">
-      <h2 className="text-2xl font-bold mb-4">Cadastros</h2>
-      <div className="mb-8">
-        <h3 className="text-xl font-semibold mb-2">Cadastrar Vendedor</h3>
-        <form onSubmit={handleAddVendedor} className="bg-gray-900 p-4 rounded-lg">
-          <input
-            type="text"
-            value={novoVendedor}
-            onChange={(e) => setNovoVendedor(e.target.value)}
-            placeholder="Nome do vendedor"
-            className="w-full p-2 bg-gray-800 text-white rounded border border-gray-700 focus:border-orange-500 mb-2"
-            required
-          />
-          <button
-            type="submit"
-            className="w-full bg-orange-500 text-white p-2 rounded hover:bg-orange-600 transition-transform transform hover:scale-105"
-          >
-            Adicionar Vendedor
-          </button>
-        </form>
-        <ul className="mt-2">
-          {vendedores.map((vend, index) => (
-            <li key={index} className="p-2 bg-gray-800 rounded mb-1">{vend}</li>
-          ))}
-        </ul>
-      </div>
-      <div className="mb-8">
-        <h3 className="text-xl font-semibold mb-2">Cadastrar Loja</h3>
-        <form onSubmit={handleAddLoja} className="bg-gray-900 p-4 rounded-lg">
-          <input
-            type="text"
-            value={novaLoja}
-            onChange={(e) => setNovaLoja(e.target.value)}
-            placeholder="Nome da loja"
-            className="w-full p-2 bg-gray-800 text-white rounded border border-gray-700 focus:border-orange-500 mb-2"
-            required
-          />
-          <button
-            type="submit"
-            className="w-full bg-orange-500 text-white p-2 rounded hover:bg-orange-600 transition-transform transform hover:scale-105"
-          >
-            Adicionar Loja
-          </button>
-        </form>
-        <ul className="mt-2">
-          {lojas.map((lj, index) => (
-            <li key={index} className="p-2 bg-gray-800 rounded mb-1">{lj}</li>
-          ))}
-        </ul>
-      </div>
-      <div>
-        <h3 className="text-xl font-semibold mb-2">Cadastrar Categoria</h3>
-        <form onSubmit={handleAddCategoria} className="bg-gray-900 p-4 rounded-lg">
-          <input
-            type="text"
-            value={novaCategoria}
-            onChange={(e) => setNovaCategoria(e.target.value)}
-            placeholder="Nome da categoria"
-            className="w-full p-2 bg-gray-800 text-white rounded border border-gray-700 focus:border-orange-500 mb-2"
-            required
-          />
-          <button
-            type="submit"
-            className="w-full bg-orange-500 text-white p-2 rounded hover:bg-orange-600 transition-transform transform hover:scale-105"
-          >
-            Adicionar Categoria
-          </button>
-        </form>
-        <ul className="mt-2">
-          {categorias.map((cat, index) => (
-            <li key={index} className="p-2 bg-gray-800 rounded mb-1">{cat}</li>
-          ))}
-        </ul>
-      </div>
+    <div className="mb-8">
+      <h2 className="text-xl font-semibold mb-4 text-orange-500">{titulo}</h2>
+      <form onSubmit={handleSubmit} className="grid gap-2 mb-4">
+        {campos.map(c => (
+          <input key={c.nome} name={c.nome} value={form[c.nome] || ''} onChange={handleChange} placeholder={c.label} className="p-2 bg-gray-800 rounded" />
+        ))}
+        <button type="submit" className="bg-orange-500 p-2 rounded text-white">Adicionar</button>
+      </form>
+      <ul className="space-y-2">
+        {lista.map(e => (
+          <li key={e.id} className="bg-gray-800 p-3 rounded flex justify-between items-center">
+            <span>{campos.map(c => e[c.nome]).join(' - ')}</span>
+            <button onClick={() => handleDelete(e.id)} className="text-red-500">Excluir</button>
+          </li>
+        ))}
+      </ul>
     </div>
-  );
+  )
 }
 
-export default Cadastros;
+export default function Cadastros({ vendedores, setVendedores, lojas, setLojas, categorias, setCategorias }) {
+  return (
+    <div>
+      <h1 className="text-2xl font-bold mb-6 text-orange-500">Cadastros</h1>
+      <CadastroSimples
+        titulo="Vendedores"
+        campos={[{ nome: 'nome', label: 'Nome' }, { nome: 'cpf', label: 'CPF' }]}
+        lista={vendedores}
+        setLista={setVendedores}
+        chave="vendedores"
+      />
+      <CadastroSimples
+        titulo="Lojas"
+        campos={[{ nome: 'nome', label: 'Nome' }, { nome: 'endereco', label: 'Endereço' }]}
+        lista={lojas}
+        setLista={setLojas}
+        chave="lojas"
+      />
+      <CadastroSimples
+        titulo="Categorias"
+        campos={[{ nome: 'nome', label: 'Nome' }]}
+        lista={categorias}
+        setLista={setCategorias}
+        chave="categorias"
+      />
+    </div>
+  )
+}
