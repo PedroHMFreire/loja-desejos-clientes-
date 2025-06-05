@@ -6,7 +6,6 @@ import Desejos from './components/Desejos';
 import Ranking from './components/Ranking';
 import Cadastros from './components/Cadastros';
 import './styles.css';
-
 function App() {
   const [desejos, setDesejos] = useState(() => {
     const saved = localStorage.getItem('desejos');
