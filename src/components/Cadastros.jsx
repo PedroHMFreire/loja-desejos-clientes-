@@ -1,7 +1,8 @@
 /* src/components/Cadastros.jsx */
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { db, ref, push, remove } from '../firebase'
 
-function CadastroSimples({ titulo, campos, lista, setLista, chave }) {
+function CadastroSimples({ titulo, campos, lista, chave }) {
   const [form, setForm] = useState({})
 
   const handleChange = e => {
@@ -11,17 +12,12 @@ function CadastroSimples({ titulo, campos, lista, setLista, chave }) {
   const handleSubmit = e => {
     e.preventDefault()
     if (Object.values(form).some(v => !v)) return
-    const novaEntrada = { ...form, id: Date.now() }
-    const atualizados = [...lista, novaEntrada]
-    setLista(atualizados)
-    localStorage.setItem(chave, JSON.stringify(atualizados))
+    push(ref(db, chave), form)
     setForm({})
   }
 
   const handleDelete = id => {
-    const atualizados = lista.filter(e => e.id !== id)
-    setLista(atualizados)
-    localStorage.setItem(chave, JSON.stringify(atualizados))
+    remove(ref(db, `${chave}/${id}`))
   }
 
   return (
@@ -45,7 +41,7 @@ function CadastroSimples({ titulo, campos, lista, setLista, chave }) {
   )
 }
 
-export default function Cadastros({ vendedores, setVendedores, lojas, setLojas, categorias, setCategorias }) {
+export default function Cadastros({ vendedores, lojas, categorias }) {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6 text-orange-500">Cadastros</h1>
@@ -53,21 +49,18 @@ export default function Cadastros({ vendedores, setVendedores, lojas, setLojas, 
         titulo="Vendedores"
         campos={[{ nome: 'nome', label: 'Nome' }, { nome: 'cpf', label: 'CPF' }]}
         lista={vendedores}
-        setLista={setVendedores}
         chave="vendedores"
       />
       <CadastroSimples
         titulo="Lojas"
         campos={[{ nome: 'nome', label: 'Nome' }, { nome: 'endereco', label: 'Endereço' }]}
         lista={lojas}
-        setLista={setLojas}
         chave="lojas"
       />
       <CadastroSimples
         titulo="Categorias"
         campos={[{ nome: 'nome', label: 'Nome' }]}
         lista={categorias}
-        setLista={setCategorias}
         chave="categorias"
       />
     </div>
