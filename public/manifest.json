@@ -1,15 +1,10 @@
+// public/manifest.json
 {
   "name": "ANOTÊ",
-  "short_name": "ANOTÊ",
+  "short_name": "Anotê",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#f97316",
-  "icons": [
-    {
-      "src": "/favicon.ico",
-      "sizes": "192x192",
-      "type": "image/x-icon"
-    }
-  ]
+  "description": "Sistema para registrar desejos de clientes nas lojas."
 }
