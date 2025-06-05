@@ -1,7 +1,8 @@
 /* src/components/Desejos.jsx */
 import { useState } from 'react'
+import { db, ref, remove } from '../firebase'
 
-export default function Desejos({ desejos, setDesejos }) {
+export default function Desejos({ desejos }) {
   const [filtros, setFiltros] = useState({ vendedor: '', loja: '' })
 
   const handleFiltro = e => {
@@ -9,9 +10,7 @@ export default function Desejos({ desejos, setDesejos }) {
   }
 
   const handleDelete = id => {
-    const atualizados = desejos.filter(d => d.id !== id)
-    setDesejos(atualizados)
-    localStorage.setItem('desejos', JSON.stringify(atualizados))
+    remove(ref(db, `desejos/${id}`))
   }
 
   const gerarTexto = (d) =>
@@ -58,24 +57,9 @@ export default function Desejos({ desejos, setDesejos }) {
               <span>Produto: {d.produto} - Tamanho: {d.tamanho} - Valor: R$ {d.valor}</span>
               <span>Vendedor: {d.vendedor} | Loja: {d.loja} | Categoria: {d.categoria}</span>
               <div className="flex gap-4 mt-2 flex-wrap">
-                <button
-                  onClick={() => enviarWhatsapp('', gerarTexto(d))}
-                  className="text-sm text-green-400 underline"
-                >
-                  Enviar para produção
-                </button>
-                <button
-                  onClick={() => enviarWhatsapp(d.tel.replace(/\\D/g, ''), mensagemCliente(d))}
-                  className="text-sm text-blue-400 underline"
-                >
-                  Enviar para cliente
-                </button>
-                <button
-                  onClick={() => handleDelete(d.id)}
-                  className="text-sm text-red-400 underline"
-                >
-                  Excluir
-                </button>
+                <button onClick={() => enviarWhatsapp('', gerarTexto(d))} className="text-sm text-green-400 underline">Enviar para produção</button>
+                <button onClick={() => enviarWhatsapp(d.tel.replace(/\D/g, ''), mensagemCliente(d))} className="text-sm text-blue-400 underline">Enviar para cliente</button>
+                <button onClick={() => handleDelete(d.id)} className="text-sm text-red-400 underline">Excluir</button>
               </div>
             </div>
           </li>
