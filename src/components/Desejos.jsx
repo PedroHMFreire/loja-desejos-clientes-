@@ -20,8 +20,8 @@ export default function Desejos({ desejos, setDesejos }) {
     return vendedorOk && lojaOk
   })
 
-  const vendedoresUnicos = [...new Set(desejos.map(d => d.vendedor))]
-  const lojasUnicas = [...new Set(desejos.map(d => d.loja))]
+  const vendedoresUnicos = [...new Set(desejos.map(d => d.vendedor).filter(Boolean))]
+  const lojasUnicas = [...new Set(desejos.map(d => d.loja).filter(Boolean))]
 
   return (
     <div>
@@ -34,15 +34,19 @@ export default function Desejos({ desejos, setDesejos }) {
         </select>
         <select name="loja" value={filtros.loja} onChange={handleFiltro} className="p-2 bg-gray-800 rounded">
           <option value="">Todas as Lojas</option>
-          {lojasUnicos.map(l => <option key={l} value={l}>{l}</option>)}
+          {lojasUnicas.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
       </div>
 
       <ul className="space-y-2">
         {desejosFiltrados.map(d => (
-          <li key={d.id} className="bg-gray-800 p-3 rounded flex justify-between items-center">
-            <span>{d.nome} quer {d.produto} ({d.vendedor})</span>
-            <button onClick={() => handleDelete(d.id)} className="text-red-500">Excluir</button>
+          <li key={d.id} className="bg-gray-800 p-3 rounded">
+            <div className="flex flex-col">
+              <span className="font-medium">Cliente: {d.nome} ({d.tel})</span>
+              <span>Produto: {d.produto} - Tamanho: {d.tamanho}</span>
+              <span>Vendedor: {d.vendedor} | Loja: {d.loja} | Categoria: {d.categoria}</span>
+              <button onClick={() => handleDelete(d.id)} className="text-red-500 text-left mt-2">Excluir</button>
+            </div>
           </li>
         ))}
       </ul>
