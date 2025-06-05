@@ -6,6 +6,7 @@ import Home from './components/Home'
 import Desejos from './components/Desejos'
 import Ranking from './components/Ranking'
 import Cadastros from './components/Cadastros'
+import { db, ref, onValue, set } from './firebase'
 
 function App() {
   const [desejos, setDesejos] = useState([])
@@ -14,10 +15,26 @@ function App() {
   const [categorias, setCategorias] = useState([])
 
   useEffect(() => {
-    setDesejos(JSON.parse(localStorage.getItem('desejos')) || [])
-    setVendedores(JSON.parse(localStorage.getItem('vendedores')) || [])
-    setLojas(JSON.parse(localStorage.getItem('lojas')) || [])
-    setCategorias(JSON.parse(localStorage.getItem('categorias')) || [])
+    onValue(ref(db, 'desejos'), snapshot => {
+      const data = snapshot.val() || {}
+      const array = Object.entries(data).map(([id, value]) => ({ id, ...value }))
+      setDesejos(array)
+    })
+    onValue(ref(db, 'vendedores'), snapshot => {
+      const data = snapshot.val() || {}
+      const array = Object.entries(data).map(([id, value]) => ({ id, ...value }))
+      setVendedores(array)
+    })
+    onValue(ref(db, 'lojas'), snapshot => {
+      const data = snapshot.val() || {}
+      const array = Object.entries(data).map(([id, value]) => ({ id, ...value }))
+      setLojas(array)
+    })
+    onValue(ref(db, 'categorias'), snapshot => {
+      const data = snapshot.val() || {}
+      const array = Object.entries(data).map(([id, value]) => ({ id, ...value }))
+      setCategorias(array)
+    })
   }, [])
 
   return (
