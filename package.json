@@ -1,22 +1,28 @@
 {
   "name": "anote",
   "version": "1.0.0",
-  "description": "Sistema web para gerenciar desejos de clientes em lojas",
+  "description": "Sistema ANOTÊ - Gerenciamento de Desejos",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "firebase": "^10.12.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.14.2"
+    "react-router-dom": "^6.14.2",
+    "tailwindcss": "^3.3.3",
+    "recharts": "^2.9.0",
+    "xlsx": "^0.18.5",
+    "file-saver": "^2.0.5",
+    "jspdf": "^2.5.1",
+    "jspdf-autotable": "^3.5.28"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.4",
     "autoprefixer": "^10.4.14",
     "postcss": "^8.4.27",
-    "tailwindcss": "^3.3.3",
     "vite": "^4.4.9"
   }
 }
