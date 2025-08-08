@@ -3,7 +3,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html, body, #root {
+  @apply h-full;
+}
+
 body {
-  @apply bg-black text-white font-sans;
-  font-family: 'Inter', sans-serif;
+  @apply font-sans bg-gray-100 text-gray-900;
 }

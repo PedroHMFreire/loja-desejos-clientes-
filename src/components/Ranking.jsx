@@ -1,98 +1,133 @@
-/* src/components/Ranking.jsx */
 import { useState } from 'react'
-import { utils, writeFile } from 'xlsx'
+import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import 'jspdf-autotable'
 
 export default function Ranking({ desejos }) {
   const [filtros, setFiltros] = useState({ vendedor: '', loja: '', dataInicial: '', dataFinal: '' })
 
   const handleFiltro = e => setFiltros({ ...filtros, [e.target.name]: e.target.value })
 
+  // Filtro por período, vendedor e loja
   const filtrarPorPeriodo = d => {
+    if (!d.data) return false
     const dataDesejo = new Date(d.data)
     const dataIni = filtros.dataInicial ? new Date(filtros.dataInicial) : null
     const dataFim = filtros.dataFinal ? new Date(filtros.dataFinal) : null
-    return (
-      (!filtros.vendedor || d.vendedor === filtros.vendedor) &&
-      (!filtros.loja || d.loja === filtros.loja) &&
-      (!dataIni || dataDesejo >= dataIni) &&
-      (!dataFim || dataDesejo <= dataFim)
-    )
+    if (dataIni && dataDesejo < dataIni) return false
+    if (dataFim && dataDesejo > dataFim) return false
+    if (filtros.vendedor && d.vendedor !== filtros.vendedor) return false
+    if (filtros.loja && d.loja !== filtros.loja) return false
+    return true
   }
 
-  const valores = desejos.filter(filtrarPorPeriodo).reduce((acc, d) => {
-    const key = d.vendedor || 'Sem vendedor'
-    acc[key] = (acc[key] || 0) + parseFloat(d.valor || 0)
-    return acc
-  }, {})
+  // Agrupa por vendedor e soma valores
+  const valores = desejos
+    .filter(filtrarPorPeriodo)
+    .reduce((acc, d) => {
+      const nome = d.vendedor || 'Sem vendedor'
+      const valor = Number(d.valor) || 0
+      acc[nome] = (acc[nome] || 0) + valor
+      return acc
+    }, {})
 
   const rankingArray = Object.entries(valores)
     .map(([nome, total]) => ({ nome, total }))
     .sort((a, b) => b.total - a.total)
 
+  // Exportação Excel
   const exportarExcel = () => {
-    const ws = utils.json_to_sheet(rankingArray)
-    const wb = utils.book_new()
-    utils.book_append_sheet(wb, ws, 'Ranking')
-    writeFile(wb, 'ranking.xlsx')
+    if (rankingArray.length === 0) return
+    const ws = XLSX.utils.json_to_sheet(rankingArray)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Ranking")
+    XLSX.writeFile(wb, "ranking.xlsx")
   }
 
+  // Exportação PDF
   const exportarPDF = () => {
+    if (rankingArray.length === 0) return
     const doc = new jsPDF()
-    doc.text('Ranking por Valor Perdido', 14, 16)
-    autoTable(doc, {
-      head: [['Posição', 'Vendedor', 'Total (R$)']],
-      body: rankingArray.map((r, i) => [i + 1, r.nome, r.total.toFixed(2)])
+    doc.text("Ranking de Vendedores", 14, 16)
+    doc.autoTable({
+      startY: 22,
+      head: [["Vendedor", "Total"]],
+      body: rankingArray.map(r => [r.nome, r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })])
     })
-    doc.save('ranking.pdf')
+    doc.save("ranking.pdf")
   }
 
   const vendedoresUnicos = [...new Set(desejos.map(d => d.vendedor).filter(Boolean))]
   const lojasUnicas = [...new Set(desejos.map(d => d.loja).filter(Boolean))]
 
-  return (
-    <div>
-      <h1 className="text-2xl font-bold mb-4 text-orange-500">Ranking por Valor Perdido</h1>
+  const totalGeral = rankingArray.reduce((acc, r) => acc + r.total, 0)
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  return (
+    <div className="max-w-2xl mx-auto mt-8 bg-white p-6 rounded shadow">
+      <h1 className="text-2xl font-bold mb-4 text-orange-500">Ranking de Vendedores</h1>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-4">
         <select name="vendedor" value={filtros.vendedor} onChange={handleFiltro} className="p-2 bg-gray-800 rounded">
           <option value="">Todos os Vendedores</option>
           {vendedoresUnicos.map(v => <option key={v} value={v}>{v}</option>)}
         </select>
         <select name="loja" value={filtros.loja} onChange={handleFiltro} className="p-2 bg-gray-800 rounded">
           <option value="">Todas as Lojas</option>
-          {lojasUnicos.map(l => <option key={l} value={l}>{l}</option>)}
+          {lojasUnicas.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
-        <input type="date" name="dataInicial" value={filtros.dataInicial} onChange={handleFiltro} className="p-2 bg-gray-800 rounded" />
-        <input type="date" name="dataFinal" value={filtros.dataFinal} onChange={handleFiltro} className="p-2 bg-gray-800 rounded" />
+        <input
+          type="date"
+          name="dataInicial"
+          value={filtros.dataInicial}
+          onChange={handleFiltro}
+          className="p-2 bg-gray-800 rounded"
+        />
+        <input
+          type="date"
+          name="dataFinal"
+          value={filtros.dataFinal}
+          onChange={handleFiltro}
+          className="p-2 bg-gray-800 rounded"
+        />
       </div>
-
-      <div className="flex gap-4 mb-4">
-        <button onClick={exportarExcel} className="bg-green-600 text-white px-4 py-2 rounded">Exportar Excel</button>
-        <button onClick={exportarPDF} className="bg-red-600 text-white px-4 py-2 rounded">Exportar PDF</button>
+      <div className="flex gap-2 mb-4">
+        <button onClick={exportarExcel} className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50" disabled={rankingArray.length === 0}>
+          Exportar Excel
+        </button>
+        <button onClick={exportarPDF} className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50" disabled={rankingArray.length === 0}>
+          Exportar PDF
+        </button>
+        <button
+          onClick={() => setFiltros({ vendedor: '', loja: '', dataInicial: '', dataFinal: '' })}
+          className="bg-gray-400 text-white px-4 py-2 rounded ml-auto"
+        >
+          Limpar Filtros
+        </button>
       </div>
-
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={rankingArray}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="nome" />
-          <YAxis />
-          <Tooltip />
-          <Bar dataKey="total" fill="#f97316" />
-        </BarChart>
-      </ResponsiveContainer>
-
-      <ul className="space-y-2 mt-6">
-        {rankingArray.map((v, i) => (
-          <li key={v.nome} className="bg-gray-800 p-3 rounded flex justify-between items-center">
-            <span className="font-medium">#{i + 1} {v.nome}</span>
-            <span>R$ {v.total.toFixed(2)}</span>
-          </li>
-        ))}
-        {rankingArray.length === 0 && <p>Nenhum valor perdido no período.</p>}
-      </ul>
+      <div className="mb-2 text-right font-semibold">
+        Total geral: {totalGeral.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+      </div>
+      {rankingArray.length === 0 ? (
+        <div className="text-center text-gray-500 py-8">Nenhum dado para exibir o ranking.</div>
+      ) : (
+        <table className="w-full text-left border mt-2">
+          <thead>
+            <tr className="bg-orange-100">
+              <th className="p-2">#</th>
+              <th className="p-2">Vendedor</th>
+              <th className="p-2">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rankingArray.map((r, i) => (
+              <tr key={r.nome} className={i === 0 ? "bg-yellow-100 font-bold" : ""}>
+                <td className="p-2">{i + 1}</td>
+                <td className="p-2">{r.nome}</td>
+                <td className="p-2">{r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }

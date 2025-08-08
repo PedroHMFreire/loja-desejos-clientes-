@@ -1,70 +1,323 @@
-/* src/components/Desejos.jsx */
-import { useState } from 'react'
-import { db, ref, remove } from '../firebase'
+import { useState, useEffect } from "react"
+import Modal from "./Modal"
+import { FaWhatsapp, FaEdit, FaCheckCircle, FaClock, FaTimesCircle } from "react-icons/fa"
 
-export default function Desejos({ desejos }) {
-  const [filtros, setFiltros] = useState({ vendedor: '', loja: '' })
+function getLojasUnicas(desejos, lojas) {
+  const nomesLojas = lojas.map(l => l.nome)
+  const lojasDesejos = [...new Set(desejos.map(d => d.loja).filter(Boolean))]
+  return Array.from(new Set([...nomesLojas, ...lojasDesejos]))
+}
 
-  const handleFiltro = e => {
-    setFiltros({ ...filtros, [e.target.name]: e.target.value })
-  }
+function gerarLinkWhatsapp(nome, tel, produto, vendedor) {
+  const msg = `Oi, ${nome}!
 
-  const handleDelete = id => {
-    remove(ref(db, `desejos/${id}`))
-  }
+Seu desejo é uma ordem! E já começamos a trabalhar para atendê-lo o quanto antes!
 
-  const gerarTexto = (d) =>
-    `Cliente: ${d.nome} (${d.tel})\nProduto: ${d.produto}\nTamanho: ${d.tamanho}\nValor: R$ ${d.valor}\nVendedor: ${d.vendedor}\nLoja: ${d.loja}\nCategoria: ${d.categoria}`
+Abaixo os detalhes. Qualquer coisa é só chamar!
 
-  const mensagemCliente = (d) =>
-    `Olá, ${d.nome}. Foi um prazer receber sua visita. Assim que recebermos o produto desejado, vamos entrar em contato. Abaixo detalhes do produto. Qualquer dúvida estamos à disposição.%0A%0A` +
-    `Produto: ${d.produto}%0ATamanho: ${d.tamanho}%0AValor estimado: R$ ${d.valor}`
+Produto desejado: ${produto}
+Vendedor responsável: ${vendedor}`
 
-  const enviarWhatsapp = (numero, texto) => {
-    const link = `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`
-    window.open(link, '_blank')
-  }
+  return `https://wa.me/55${tel.replace(/\D/g, "")}?text=${encodeURIComponent(msg)}`
+}
 
-  const desejosFiltrados = desejos.filter(d => {
-    const vendedorOk = filtros.vendedor ? d.vendedor === filtros.vendedor : true
-    const lojaOk = filtros.loja ? d.loja === filtros.loja : true
-    return vendedorOk && lojaOk
+function nomeCompletoValido(nome) {
+  if (!nome) return false
+  const partes = nome.trim().split(/\s+/)
+  return partes.length >= 2 && partes.every(p => p.length >= 2)
+}
+
+export default function Desejos({ desejos, setDesejos, vendedores, lojas, categorias }) {
+  const [modalAberto, setModalAberto] = useState(false)
+  const [editando, setEditando] = useState(null)
+  const [aba, setAba] = useState(lojas[0]?.nome || "")
+  const [msg, setMsg] = useState("")
+
+  const [form, setForm] = useState({
+    nome: "",
+    tel: "",
+    produto: "",
+    tamanho: "",
+    valor: "",
+    vendedor: "",
+    loja: "",
+    categoria: ""
   })
 
-  const vendedoresUnicos = [...new Set(desejos.map(d => d.vendedor).filter(Boolean))]
-  const lojasUnicas = [...new Set(desejos.map(d => d.loja).filter(Boolean))]
+  const lojasUnicas = getLojasUnicas(desejos, lojas)
+
+  useEffect(() => {
+    if ((aba === "" || !lojasUnicas.includes(aba)) && lojasUnicas.length > 0) {
+      setAba(lojasUnicas[0])
+    }
+    // eslint-disable-next-line
+  }, [lojasUnicas])
+
+  // Alterna status: pendente -> atendido -> desistido -> pendente ...
+  const alternarStatus = id => {
+    setDesejos(desejos.map(d => {
+      if (d.id !== id) return d
+      const next =
+        d.status === "pendente"
+          ? "atendido"
+          : d.status === "atendido"
+          ? "desistido"
+          : "pendente"
+      return { ...d, status: next }
+    }))
+  }
+
+  const abrirModal = (desejo = null) => {
+    setEditando(desejo)
+    setForm(
+      desejo
+        ? { ...desejo }
+        : {
+            nome: "",
+            tel: "",
+            produto: "",
+            tamanho: "",
+            valor: "",
+            vendedor: "",
+            loja: aba || lojasUnicas[0] || "",
+            categoria: ""
+          }
+    )
+    setMsg("")
+    setModalAberto(true)
+  }
+
+  const fecharModal = () => {
+    setModalAberto(false)
+    setEditando(null)
+    setMsg("")
+  }
+
+  const handleChange = e => {
+    setForm({ ...form, [e.target.name]: e.target.value })
+  }
+
+  const handleSubmit = e => {
+    e.preventDefault()
+    if (!nomeCompletoValido(form.nome)) {
+      setMsg("Digite o nome e sobrenome do cliente (mínimo 2 letras cada).")
+      return
+    }
+    if (
+      !form.tel ||
+      !form.produto ||
+      !form.tamanho ||
+      !form.valor ||
+      !form.vendedor ||
+      !form.loja
+    ) {
+      setMsg("Preencha todos os campos obrigatórios.")
+      return
+    }
+    if (editando) {
+      setDesejos(desejos.map(d => (d.id === editando.id ? { ...form, id: editando.id, status: d.status || "pendente" } : d)))
+      setMsg("Desejo atualizado com sucesso!")
+    } else {
+      setDesejos([
+        ...desejos,
+        { ...form, id: Date.now().toString(), status: "pendente" }
+      ])
+      setMsg("Desejo cadastrado com sucesso!")
+    }
+    setTimeout(() => {
+      fecharModal()
+    }, 800)
+  }
+
+  const handleEdit = desejo => {
+    abrirModal(desejo)
+  }
+
+  const desejosPorLoja = loja =>
+    desejos.filter(d => d.loja === loja)
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-4 text-orange-500">Desejos</h1>
-
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <select name="vendedor" value={filtros.vendedor} onChange={handleFiltro} className="p-2 bg-gray-800 rounded">
-          <option value="">Todos os Vendedores</option>
-          {vendedoresUnicos.map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select name="loja" value={filtros.loja} onChange={handleFiltro} className="p-2 bg-gray-800 rounded">
-          <option value="">Todas as Lojas</option>
-          {lojasUnicas.map(l => <option key={l} value={l}>{l}</option>)}
-        </select>
+    <div className="max-w-5xl mx-auto mt-8 px-2">
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+        <h1 className="text-2xl font-bold text-primary">Desejos dos Clientes</h1>
+        <button
+          onClick={() => abrirModal()}
+          className="bg-primary text-white px-4 py-2 rounded hover:bg-primary/80 transition w-full sm:w-auto"
+        >
+          Cadastrar desejo
+        </button>
       </div>
-
-      <ul className="space-y-2">
-        {desejosFiltrados.map(d => (
-          <li key={d.id} className="bg-gray-800 p-3 rounded">
-            <div className="flex flex-col">
-              <span className="font-medium">Cliente: {d.nome} ({d.tel})</span>
-              <span>Produto: {d.produto} - Tamanho: {d.tamanho} - Valor: R$ {d.valor}</span>
-              <span>Vendedor: {d.vendedor} | Loja: {d.loja} | Categoria: {d.categoria}</span>
-              <div className="flex gap-4 mt-2 flex-wrap">
-                <button onClick={() => enviarWhatsapp('', gerarTexto(d))} className="text-sm text-green-400 underline">Enviar para produção</button>
-                <button onClick={() => enviarWhatsapp(d.tel.replace(/\D/g, ''), mensagemCliente(d))} className="text-sm text-blue-400 underline">Enviar para cliente</button>
-                <button onClick={() => handleDelete(d.id)} className="text-sm text-red-400 underline">Excluir</button>
-              </div>
-            </div>
-          </li>
+      {/* Abas de lojas */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {lojasUnicas.map(loja => (
+          <button
+            key={loja}
+            onClick={() => setAba(loja)}
+            className={`px-4 py-2 rounded-t ${aba === loja ? "bg-primary text-white" : "bg-gray-200 text-gray-700"} transition`}
+          >
+            {loja}
+          </button>
         ))}
-      </ul>
+      </div>
+      {/* Tabela de desejos */}
+      <div className="bg-white rounded-b shadow p-2 sm:p-4 overflow-x-auto">
+        {desejosPorLoja(aba).length === 0 ? (
+          <div className="text-center text-gray-500 py-8">Nenhum desejo cadastrado para esta loja.</div>
+        ) : (
+          <table className="w-full border rounded overflow-hidden text-sm sm:text-base">
+            <thead>
+              <tr className="bg-primary/10">
+                <th className="p-2">Cliente</th>
+                <th className="p-2">Produto</th>
+                <th className="p-2">Telefone</th>
+                <th className="p-2">Tamanho</th>
+                <th className="p-2">Valor</th>
+                <th className="p-2">Vendedor</th>
+                <th className="p-2 text-center">Status</th>
+                <th className="p-2">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {desejosPorLoja(aba).map(desejo => (
+                <tr key={desejo.id} className="hover:bg-primary/5 transition">
+                  <td className="p-2 break-words">{desejo.nome}</td>
+                  <td className="p-2 break-words">{desejo.produto}</td>
+                  <td className="p-2 break-words">{desejo.tel}</td>
+                  <td className="p-2 break-words">{desejo.tamanho}</td>
+                  <td className="p-2 break-words">{desejo.valor}</td>
+                  <td className="p-2 break-words">{desejo.vendedor}</td>
+                  <td className="p-2 text-center">
+                    <button
+                      onClick={() => alternarStatus(desejo.id)}
+                      title={
+                        desejo.status === "atendido"
+                          ? "Marcar como desistido"
+                          : desejo.status === "desistido"
+                          ? "Marcar como pendente"
+                          : "Marcar como atendido"
+                      }
+                      className="focus:outline-none"
+                    >
+                      {desejo.status === "atendido" ? (
+                        <FaCheckCircle className="text-green-500 text-lg" />
+                      ) : desejo.status === "desistido" ? (
+                        <FaTimesCircle className="text-red-500 text-lg" />
+                      ) : (
+                        <FaClock className="text-gray-400 text-lg" />
+                      )}
+                    </button>
+                  </td>
+                  <td className="p-2 flex gap-2">
+                    <button
+                      title="Editar"
+                      onClick={() => handleEdit(desejo)}
+                      className="p-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-700"
+                    >
+                      <FaEdit />
+                    </button>
+                    <a
+                      href={gerarLinkWhatsapp(desejo.nome, desejo.tel, desejo.produto, desejo.vendedor)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="WhatsApp"
+                      className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-500"
+                    >
+                      <FaWhatsapp />
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {/* Modal de cadastro/edição */}
+      <Modal isOpen={modalAberto} onClose={fecharModal}>
+        <h2 className="text-xl font-bold mb-4">{editando ? "Editar desejo" : "Cadastrar desejo"}</h2>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            name="nome"
+            value={form.nome}
+            onChange={handleChange}
+            placeholder="Nome e sobrenome do cliente*"
+            className="w-full p-2 border rounded"
+            required
+            minLength={5}
+          />
+          <input
+            name="tel"
+            value={form.tel}
+            onChange={handleChange}
+            placeholder="Telefone (apenas números)*"
+            className="w-full p-2 border rounded"
+            required
+          />
+          <input
+            name="produto"
+            value={form.produto}
+            onChange={handleChange}
+            placeholder="Produto desejado*"
+            className="w-full p-2 border rounded"
+            required
+          />
+          <input
+            name="tamanho"
+            value={form.tamanho}
+            onChange={handleChange}
+            placeholder="Tamanho*"
+            className="w-full p-2 border rounded"
+            required
+          />
+          <input
+            name="valor"
+            value={form.valor}
+            onChange={handleChange}
+            placeholder="Valor*"
+            className="w-full p-2 border rounded"
+            required
+          />
+          <select
+            name="vendedor"
+            value={form.vendedor}
+            onChange={handleChange}
+            className="w-full p-2 border rounded"
+            required
+          >
+            <option value="">Selecione o vendedor*</option>
+            {vendedores.map(v => (
+              <option key={v.id || v.nome} value={v.nome}>{v.nome}</option>
+            ))}
+          </select>
+          <select
+            name="loja"
+            value={form.loja}
+            onChange={handleChange}
+            className="w-full p-2 border rounded"
+            required
+          >
+            <option value="">Selecione a loja*</option>
+            {lojasUnicas.map(l => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
+          <select
+            name="categoria"
+            value={form.categoria}
+            onChange={handleChange}
+            className="w-full p-2 border rounded"
+          >
+            <option value="">Selecione a categoria</option>
+            {categorias.map(c => (
+              <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+            ))}
+          </select>
+          <div className="flex flex-col sm:flex-row justify-end gap-2">
+            <button type="button" onClick={fecharModal} className="px-4 py-2 rounded bg-gray-300 text-gray-700 w-full sm:w-auto">Cancelar</button>
+            <button type="submit" className="px-4 py-2 rounded bg-primary text-white w-full sm:w-auto">{editando ? "Salvar" : "Cadastrar"}</button>
+          </div>
+          {msg && <div className={`text-center ${msg.includes('sucesso') ? 'text-green-600' : 'text-red-600'}`}>{msg}</div>}
+        </form>
+      </Modal>
     </div>
   )
 }
