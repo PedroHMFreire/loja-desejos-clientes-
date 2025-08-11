@@ -8,5 +8,5 @@ html, body, #root {
 }
 
 body {
-  @apply font-sans bg-gray-100 text-gray-900;
+  @apply font-sans bg-white text-gray-900;
 }
