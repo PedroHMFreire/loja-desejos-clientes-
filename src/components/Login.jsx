@@ -26,7 +26,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
+    <div className="min-h-screen flex flex-col items-center justify-start pt-8 bg-gray-100">
       {/* Logomarca */}
       <div className="mb-6">
         <span className="text-4xl font-bold text-primary">Anot.AI</span>
