@@ -113,7 +113,7 @@ export default function Home({ desejos, setDesejos, vendedores, lojas, categoria
   }
 
   return (
-    <div className="max-w-6xl mx-auto mt-8 px-2">
+    <div className="max-w-6xl mx-auto mt-8 px-2 bg-white">
       {/* Botão cadastrar desejo */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
         <button

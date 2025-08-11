@@ -40,7 +40,7 @@ export default function Login() {
         <input
           type="email"
           placeholder="E-mail"
-          className="w-full p-2 border rounded"
+          className="w-full p-2 border rounded bg-white"
           value={email}
           onChange={e => setEmail(e.target.value)}
           autoComplete="username"
@@ -48,7 +48,7 @@ export default function Login() {
         <input
           type="password"
           placeholder="Senha"
-          className="w-full p-2 border rounded"
+          className="w-full p-2 border rounded bg-white"
           value={password}
           onChange={e => setPassword(e.target.value)}
           autoComplete="current-password"
