@@ -1,5 +1,5 @@
 /* src/App.jsx */
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom"
 import { useState, useEffect } from "react"
 import Navbar from "./components/Navbar"
 import Home from "./components/Home"
@@ -76,6 +76,9 @@ export default function App() {
           {/* Login e Cadastro públicos */}
           <Route path="/login" element={<Login />} />
           <Route path="/cadastro" element={<CadastroAmbiente onCadastro={() => (window.location.href = "/")} />} />
+
+  {/* Redireciona /home para / */}
+  <Route path="/home" element={<Navigate to="/" replace />} />
 
           {/* Raiz protegida leva ao Home */}
           <Route
