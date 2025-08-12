@@ -1,87 +1,90 @@
-import { createContext, useContext, useEffect, useState } from 'react'
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "firebase/auth"
-import { db, ref, set, get } from "../firebase" // Certifique-se que get está exportado em firebase.js
+import { createContext, useContext, useEffect, useState } from "react"
+import {
+  auth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+  createUserWithEmailAndPassword,
+  db,
+  ref,
+  set,
+  get,
+} from "../firebase.js"
 
-const AuthContext = createContext()
+const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState(null)       // usuário do Firebase Auth
+  const [profile, setProfile] = useState(null) // dados extras (users/{uid}/profile)
   const [role, setRole] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [ambienteId, setAmbienteId] = useState(null)
+  const [loading, setLoading] = useState(true)
 
-  // Firebase Auth instance
-  const auth = getAuth()
-
-  // Login usando Firebase Auth
-  const login = async (email, password) => {
-    setLoading(true)
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password)
-      const firebaseUser = userCredential.user
-
-      // Busca dados do gerente no Firebase Database
-      const usuarioSnap = await get(ref(db, `usuarios/${email.replace(/\./g, "_")}`))
-      if (!usuarioSnap.exists()) throw new Error("Usuário não encontrado no banco")
-      const usuario = usuarioSnap.val()
-
-      setUser(usuario)
-      setRole(usuario.role)
-      setAmbienteId(usuario.ambienteId)
-      localStorage.setItem('ldc_user', JSON.stringify(usuario))
-      localStorage.setItem('ldc_role', usuario.role)
-      localStorage.setItem('ldc_ambienteId', usuario.ambienteId)
-      setLoading(false)
-      return usuario
-    } catch (err) {
-      setLoading(false)
-      throw err
-    }
-  }
-
-  // Logout usando Firebase Auth
-  const logout = async () => {
-    await signOut(auth)
-    setUser(null)
-    setRole(null)
-    setAmbienteId(null)
-    localStorage.removeItem('ldc_user')
-    localStorage.removeItem('ldc_role')
-    localStorage.removeItem('ldc_ambienteId')
-  }
-
-  // Cadastro de novo usuário (gerente/corporação)
-  // Cria usuário no Firebase Auth e salva dados no Database
-  const cadastrarUsuario = async (novoUsuario) => {
-    // Cria usuário no Auth
-    const userCredential = await createUserWithEmailAndPassword(auth, novoUsuario.email, novoUsuario.senha)
-    const firebaseUser = userCredential.user
-    // Salva dados do gerente no Database
-    await set(ref(db, `usuarios/${novoUsuario.email.replace(/\./g, "_")}`), novoUsuario)
-    return novoUsuario
-  }
-
-  // Efeito para manter user/role sincronizados com localStorage
+  // Observa sessão de login (login/logout/refresh) e carrega o perfil
   useEffect(() => {
-    const usuario = JSON.parse(localStorage.getItem('ldc_user'))
-    setUser(usuario)
-    setRole(localStorage.getItem('ldc_role') || null)
-    setAmbienteId(localStorage.getItem('ldc_ambienteId') || null)
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      try {
+        if (!u) {
+          setUser(null)
+          setProfile(null)
+          setRole(null)
+          setLoading(false)
+          return
+        }
+        setUser(u)
+
+        // carrega profile do usuário
+        const snap = await get(ref(db, `users/${u.uid}/profile`))
+        const prof = snap.exists() ? snap.val() : null
+        setProfile(prof)
+        setRole(prof?.role || "gerente")
+      } finally {
+        setLoading(false)
+      }
+    })
+    return () => unsub()
   }, [])
 
-  return (
-    <AuthContext.Provider value={{
-      user,
+  // Login
+  const login = async (email, password) => {
+    await signInWithEmailAndPassword(auth, email, password)
+    // estados serão atualizados pelo onAuthStateChanged
+  }
+
+  // Logout
+  const logout = async () => {
+    await signOut(auth)
+    // estados serão limpos pelo onAuthStateChanged
+  }
+
+  // Cadastro de usuário (cria Auth + profile em users/{uid}/profile)
+  const cadastrarUsuario = async ({ nome, email, telefone, senha, role = "gerente" }) => {
+    const cred = await createUserWithEmailAndPassword(auth, email, senha)
+    const uid = cred.user.uid
+
+    await set(ref(db, `users/${uid}/profile`), {
+      uid,
+      nome,
+      email,
+      telefone,
       role,
-      ambienteId,
-      loading,
-      login,
-      logout,
-      cadastrarUsuario
-    }}>
-      {children}
-    </AuthContext.Provider>
-  )
+      createdAt: Date.now(),
+    })
+
+    // não faz login automático aqui; quem controla é a tela chamadora
+    return { uid, nome, email, telefone, role }
+  }
+
+  const value = {
+    user,         // objeto do Firebase Auth (tem uid, email, etc.)
+    profile,      // { nome, telefone, role, ... } de users/{uid}/profile
+    role,
+    loading,
+    login,
+    logout,
+    cadastrarUsuario,
+  }
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export const useAuth = () => useContext(AuthContext)

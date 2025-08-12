@@ -1,5 +1,8 @@
+// src/components/Home.jsx
 import { useState } from "react"
 import Modal from "./Modal"
+import { useAuth } from "../contexts/AuthContext"
+import { db, ref, push } from "../firebase.js"
 import {
   FaCheckCircle,
   FaClock,
@@ -17,12 +20,14 @@ function nomeCompletoValido(nome) {
 }
 
 const STATUS_COLORS = {
-  pendente: "#60a5fa", // azul
-  atendido: "#22c55e", // verde
-  desistido: "#ef4444" // vermelho
+  pendente: "#60a5fa",
+  atendido: "#22c55e",
+  desistido: "#ef4444"
 }
 
-export default function Home({ desejos, setDesejos, vendedores, lojas, categorias }) {
+export default function Home({ desejos = [], setDesejos, vendedores = [], lojas = [], categorias = [] }) {
+  const { user } = useAuth()
+
   // Modal de cadastro
   const [modalAberto, setModalAberto] = useState(false)
   const [msg, setMsg] = useState("")
@@ -44,19 +49,21 @@ export default function Home({ desejos, setDesejos, vendedores, lojas, categoria
   const desistidos = desejos.filter(d => d.status === "desistido").length
   const valorTotal = desejos.reduce((acc, d) => acc + (parseFloat(d.valor) || 0), 0)
 
-  // Gráfico de barras: desejos por loja
-  const lojasData = lojas.map(loja => ({
-    name: loja.nome,
-    value: desejos.filter(d => d.loja === loja.nome).length
-  }))
+  // Gráficos (com proteção)
+  const lojasData = Array.isArray(lojas)
+    ? lojas.map(loja => ({
+        name: loja.nome,
+        value: desejos.filter(d => d.loja === loja.nome).length
+      }))
+    : []
 
-  // Gráfico de barras: desejos por vendedor
-  const vendedoresData = vendedores.map(v => ({
-    name: v.nome,
-    value: desejos.filter(d => d.vendedor === v.nome).length
-  }))
+  const vendedoresData = Array.isArray(vendedores)
+    ? vendedores.map(v => ({
+        name: v.nome,
+        value: desejos.filter(d => d.vendedor === v.nome).length
+      }))
+    : []
 
-  // Gráfico de pizza: status
   const statusData = [
     { name: "Pendentes", value: pendentes, color: STATUS_COLORS.pendente },
     { name: "Atendidos", value: atendidos, color: STATUS_COLORS.atendido },
@@ -85,31 +92,41 @@ export default function Home({ desejos, setDesejos, vendedores, lojas, categoria
   const handleChange = e => {
     setForm({ ...form, [e.target.name]: e.target.value })
   }
-  const handleSubmit = e => {
+
+  const handleSubmit = async e => {
     e.preventDefault()
+    if (!user?.uid) {
+      setMsg("Você precisa estar logado.")
+      return
+    }
     if (!nomeCompletoValido(form.nome)) {
       setMsg("Digite o nome e sobrenome do cliente (mínimo 2 letras cada).")
       return
     }
-    if (
-      !form.tel ||
-      !form.produto ||
-      !form.tamanho ||
-      !form.valor ||
-      !form.vendedor ||
-      !form.loja
-    ) {
+    if (!form.tel || !form.produto || !form.tamanho || !form.valor || !form.vendedor || !form.loja) {
       setMsg("Preencha todos os campos obrigatórios.")
       return
     }
-    setDesejos([
-      ...desejos,
-      { ...form, id: Date.now().toString(), status: "pendente" }
-    ])
-    setMsg("Desejo cadastrado com sucesso!")
-    setTimeout(() => {
-      fecharModal()
-    }, 800)
+
+    try {
+      const payload = {
+        ...form,
+        valor: parseFloat(form.valor) || 0,
+        status: "pendente",
+        createdAt: Date.now()
+      }
+      // grava no RTDB isolado por usuário
+      await push(ref(db, `users/${user.uid}/desejos`), payload)
+
+      setMsg("Desejo cadastrado com sucesso!")
+      setTimeout(() => {
+        fecharModal()
+      }, 800)
+      // Não atualizamos setDesejos aqui para evitar duplicidade — o App.jsx já escuta via onValue
+    } catch (err) {
+      setMsg("Erro ao salvar. Tente novamente.")
+      console.error("Erro ao cadastrar desejo:", err)
+    }
   }
 
   return (
@@ -125,92 +142,100 @@ export default function Home({ desejos, setDesejos, vendedores, lojas, categoria
       </div>
 
       {/* Indicadores */}
-<div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4 mb-6">
-  <div className="bg-white rounded shadow p-3 flex flex-col items-center min-w-0">
-    <span className="text-gray-500 text-xs sm:text-sm">Total de desejos</span>
-    <span className="text-xl sm:text-2xl font-bold text-primary">{total}</span>
-  </div>
-  <div className="bg-white rounded shadow p-3 flex flex-col items-center min-w-0">
-    <span className="text-gray-500 text-xs sm:text-sm flex items-center gap-1">
-      <FaClock className="text-blue-400" /> Pendentes
-    </span>
-    <span className="text-xl sm:text-2xl font-bold text-blue-400">{pendentes}</span>
-  </div>
-  <div className="bg-white rounded shadow p-3 flex flex-col items-center min-w-0">
-    <span className="text-gray-500 text-xs sm:text-sm flex items-center gap-1">
-      <FaCheckCircle className="text-green-500" /> Atendidos
-    </span>
-    <span className="text-xl sm:text-2xl font-bold text-green-500">{atendidos}</span>
-  </div>
-  <div className="bg-white rounded shadow p-3 flex flex-col items-center min-w-0">
-    <span className="text-gray-500 text-xs sm:text-sm flex items-center gap-1">
-      <FaTimesCircle className="text-red-500" /> Desistências
-    </span>
-    <span className="text-xl sm:text-2xl font-bold text-red-500">{desistidos}</span>
-  </div>
-  <div className="bg-white rounded shadow p-3 flex flex-col items-center min-w-0 col-span-1 lg:col-span-1">
-    <span className="text-gray-500 text-xs sm:text-sm">Valor total estimado</span>
-    <span className="text-xl sm:text-2xl font-bold text-primary">
-      {valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-    </span>
-  </div>
-</div>
+      <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4 mb-6">
+        <div className="bg-white rounded shadow p-3 flex flex-col items-center min-w-0">
+          <span className="text-gray-500 text-xs sm:text-sm">Total de desejos</span>
+          <span className="text-xl sm:text-2xl font-bold text-primary">{total}</span>
+        </div>
+        <div className="bg-white rounded shadow p-3 flex flex-col items-center min-w-0">
+          <span className="text-gray-500 text-xs sm:text-sm flex items-center gap-1">
+            <FaClock className="text-blue-400" /> Pendentes
+          </span>
+          <span className="text-xl sm:text-2xl font-bold text-blue-400">{pendentes}</span>
+        </div>
+        <div className="bg-white rounded shadow p-3 flex flex-col items-center min-w-0">
+          <span className="text-gray-500 text-xs sm:text-sm flex items-center gap-1">
+            <FaCheckCircle className="text-green-500" /> Atendidos
+          </span>
+          <span className="text-xl sm:text-2xl font-bold text-green-500">{atendidos}</span>
+        </div>
+        <div className="bg-white rounded shadow p-3 flex flex-col items-center min-w-0">
+          <span className="text-gray-500 text-xs sm:text-sm flex items-center gap-1">
+            <FaTimesCircle className="text-red-500" /> Desistências
+          </span>
+          <span className="text-xl sm:text-2xl font-bold text-red-500">{desistidos}</span>
+        </div>
+        <div className="bg-white rounded shadow p-3 flex flex-col items-center min-w-0 col-span-1 lg:col-span-1">
+          <span className="text-gray-500 text-xs sm:text-sm">Valor total estimado</span>
+          <span className="text-xl sm:text-2xl font-bold text-primary">
+            {valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+          </span>
+        </div>
+      </div>
 
-{/* Gráficos */}
-<div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:gap-8">
-  <div className="bg-white rounded shadow p-3 overflow-x-auto">
-    <h2 className="font-semibold mb-2 text-primary">Desejos por loja</h2>
-    <div className="min-w-[300px]">
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={lojasData}>
-          <XAxis dataKey="name" />
-          <YAxis allowDecimals={false} />
-          <Tooltip />
-          <Bar dataKey="value" fill="#60a5fa" />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  </div>
-  <div className="bg-white rounded shadow p-3 overflow-x-auto">
-    <h2 className="font-semibold mb-2 text-primary">Desejos por vendedor</h2>
-    <div className="min-w-[300px]">
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={vendedoresData}>
-          <XAxis dataKey="name" />
-          <YAxis allowDecimals={false} />
-          <Tooltip />
-          <Bar dataKey="value" fill="#6366f1" />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  </div>
-  <div className="bg-white rounded shadow p-3 overflow-x-auto lg:col-span-2">
-    <h2 className="font-semibold mb-2 text-primary">Proporção por status</h2>
-    <div className="min-w-[300px]">
-      <ResponsiveContainer width="100%" height={220}>
-        <PieChart>
-          <Pie
-            data={statusData}
-            dataKey="value"
-            nameKey="name"
-            cx="50%"
-            cy="50%"
-            outerRadius={80}
-            label={({ name, percent }) =>
-              `${name} (${(percent * 100).toFixed(0)}%)`
-            }
-          >
-            {statusData.map((entry, idx) => (
-              <Cell key={entry.name} fill={entry.color} />
-            ))}
-          </Pie>
-          <Legend />
-          <Tooltip />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
-  </div>
-</div>
+      {/* Gráficos */}
+      <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:gap-8">
+        <div className="bg-white rounded shadow p-3 overflow-x-auto">
+          <h2 className="font-semibold mb-2 text-primary">Desejos por loja</h2>
+          <div className="min-w-[300px]">
+            {lojasData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={lojasData}>
+                  <XAxis dataKey="name" />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="#60a5fa" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-sm text-gray-500">Sem dados de lojas.</div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded shadow p-3 overflow-x-auto">
+          <h2 className="font-semibold mb-2 text-primary">Desejos por vendedor</h2>
+          <div className="min-w-[300px]">
+            {vendedoresData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={vendedoresData}>
+                  <XAxis dataKey="name" />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="#6366f1" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-sm text-gray-500">Sem dados de vendedores.</div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded shadow p-3 overflow-x-auto lg:col-span-2">
+          <h2 className="font-semibold mb-2 text-primary">Proporção por status</h2>
+          <div className="min-w-[300px]">
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={statusData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                >
+                  {statusData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Legend />
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
 
       {/* Modal de cadastro de desejo */}
       <Modal isOpen={modalAberto} onClose={fecharModal}>
@@ -293,10 +318,18 @@ export default function Home({ desejos, setDesejos, vendedores, lojas, categoria
             ))}
           </select>
           <div className="flex flex-col sm:flex-row justify-end gap-2">
-            <button type="button" onClick={fecharModal} className="px-4 py-2 rounded bg-gray-300 text-gray-700 w-full sm:w-auto">Cancelar</button>
-            <button type="submit" className="px-4 py-2 rounded bg-primary text-white w-full sm:w-auto">Cadastrar</button>
+            <button type="button" onClick={fecharModal} className="px-4 py-2 rounded bg-gray-300 text-gray-700 w-full sm:w-auto">
+              Cancelar
+            </button>
+            <button type="submit" className="px-4 py-2 rounded bg-primary text-white w-full sm:w-auto">
+              Cadastrar
+            </button>
           </div>
-          {msg && <div className={`text-center ${msg.includes('sucesso') ? 'text-green-600' : 'text-red-600'}`}>{msg}</div>}
+          {msg && (
+            <div className={`text-center ${msg.toLowerCase().includes("sucesso") ? "text-green-600" : "text-red-600"}`}>
+              {msg}
+            </div>
+          )}
         </form>
       </Modal>
     </div>
