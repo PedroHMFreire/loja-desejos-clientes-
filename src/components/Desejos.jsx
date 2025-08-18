@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
-import Modal from "./Modal"
-import { FaWhatsapp, FaEdit, FaCheckCircle, FaClock, FaTimesCircle } from "react-icons/fa"
+import { FaEdit, FaTrash } from "react-icons/fa"
+import { db, ref, set, push, get, remove } from "../firebase"
+import { useAuth } from "../contexts/AuthContext"
 
 function getLojasUnicas(desejos, lojas) {
   const nomesLojas = lojas.map(l => l.nome)
@@ -27,12 +28,9 @@ function nomeCompletoValido(nome) {
   return partes.length >= 2 && partes.every(p => p.length >= 2)
 }
 
-export default function Desejos({ desejos, setDesejos, vendedores, lojas, categorias }) {
-  const [modalAberto, setModalAberto] = useState(false)
-  const [editando, setEditando] = useState(null)
-  const [aba, setAba] = useState(lojas[0]?.nome || "")
-  const [msg, setMsg] = useState("")
-
+export default function Desejos({ vendedores, lojas, categorias }) {
+  const { ambienteId } = useAuth()
+  const [desejos, setDesejos] = useState([])
   const [form, setForm] = useState({
     nome: "",
     tel: "",
@@ -43,281 +41,186 @@ export default function Desejos({ desejos, setDesejos, vendedores, lojas, catego
     loja: "",
     categoria: ""
   })
+  const [editId, setEditId] = useState(null)
+  const [editForm, setEditForm] = useState({})
+  const [msg, setMsg] = useState("")
+  const [showConfirm, setShowConfirm] = useState({ show: false, id: null })
 
-  const lojasUnicas = getLojasUnicas(desejos, lojas)
-
+  // Carregar desejos do Firebase ao entrar
   useEffect(() => {
-    if ((aba === "" || !lojasUnicas.includes(aba)) && lojasUnicas.length > 0) {
-      setAba(lojasUnicas[0])
+    async function carregarDesejos() {
+      if (!ambienteId) return
+      const snap = await get(ref(db, `ambientes/${ambienteId}/desejos`))
+      if (snap.exists()) {
+        const dados = snap.val()
+        const listaBanco = Object.entries(dados).map(([id, item]) => ({ ...item, id }))
+        setDesejos(listaBanco)
+      } else {
+        setDesejos([])
+      }
     }
-    // eslint-disable-next-line
-  }, [lojasUnicas])
-
-  // Alterna status: pendente -> atendido -> desistido -> pendente ...
-  const alternarStatus = id => {
-    setDesejos(desejos.map(d => {
-      if (d.id !== id) return d
-      const next =
-        d.status === "pendente"
-          ? "atendido"
-          : d.status === "atendido"
-          ? "desistido"
-          : "pendente"
-      return { ...d, status: next }
-    }))
-  }
-
-  const abrirModal = (desejo = null) => {
-    setEditando(desejo)
-    setForm(
-      desejo
-        ? { ...desejo }
-        : {
-            nome: "",
-            tel: "",
-            produto: "",
-            tamanho: "",
-            valor: "",
-            vendedor: "",
-            loja: aba || lojasUnicas[0] || "",
-            categoria: ""
-          }
-    )
-    setMsg("")
-    setModalAberto(true)
-  }
-
-  const fecharModal = () => {
-    setModalAberto(false)
-    setEditando(null)
-    setMsg("")
-  }
+    carregarDesejos()
+  }, [ambienteId])
 
   const handleChange = e => {
     setForm({ ...form, [e.target.name]: e.target.value })
   }
 
-  const handleSubmit = e => {
+  const handleEditChange = e => {
+    setEditForm({ ...editForm, [e.target.name]: e.target.value })
+  }
+
+  const handleSubmit = async e => {
     e.preventDefault()
     if (!nomeCompletoValido(form.nome)) {
       setMsg("Digite o nome e sobrenome do cliente (mínimo 2 letras cada).")
       return
     }
-    if (
-      !form.tel ||
-      !form.produto ||
-      !form.tamanho ||
-      !form.valor ||
-      !form.vendedor ||
-      !form.loja
-    ) {
+    if (!form.tel || !form.produto || !form.tamanho || !form.valor || !form.vendedor || !form.loja) {
       setMsg("Preencha todos os campos obrigatórios.")
       return
     }
-    if (editando) {
-      setDesejos(desejos.map(d => (d.id === editando.id ? { ...form, id: editando.id, status: d.status || "pendente" } : d)))
-      setMsg("Desejo atualizado com sucesso!")
-    } else {
-      setDesejos([
-        ...desejos,
-        { ...form, id: Date.now().toString(), status: "pendente" }
-      ])
-      setMsg("Desejo cadastrado com sucesso!")
+    const novoRef = push(ref(db, `ambientes/${ambienteId}/desejos`))
+    await set(novoRef, { ...form })
+    setForm({
+      nome: "",
+      tel: "",
+      produto: "",
+      tamanho: "",
+      valor: "",
+      vendedor: "",
+      loja: "",
+      categoria: ""
+    })
+    setMsg("Desejo cadastrado com sucesso!")
+    setTimeout(() => setMsg(""), 2000)
+    // Recarrega lista
+    const snap = await get(ref(db, `ambientes/${ambienteId}/desejos`))
+    if (snap.exists()) {
+      const dados = snap.val()
+      const listaBanco = Object.entries(dados).map(([id, item]) => ({ ...item, id }))
+      setDesejos(listaBanco)
     }
-    setTimeout(() => {
-      fecharModal()
-    }, 800)
   }
 
-  const handleEdit = desejo => {
-    abrirModal(desejo)
+  const handleEdit = item => {
+    setEditId(item.id)
+    setEditForm(item)
   }
 
-  const desejosPorLoja = loja =>
-    desejos.filter(d => d.loja === loja)
+  const handleEditSubmit = async e => {
+    e.preventDefault()
+    await set(ref(db, `ambientes/${ambienteId}/desejos/${editId}`), { ...editForm })
+    setEditId(null)
+    setEditForm({})
+    setMsg("Desejo atualizado!")
+    setTimeout(() => setMsg(""), 2000)
+    // Recarrega lista
+    const snap = await get(ref(db, `ambientes/${ambienteId}/desejos`))
+    if (snap.exists()) {
+      const dados = snap.val()
+      const listaBanco = Object.entries(dados).map(([id, item]) => ({ ...item, id }))
+      setDesejos(listaBanco)
+    }
+  }
+
+  const handleDelete = id => {
+    setShowConfirm({ show: true, id })
+  }
+
+  const confirmDelete = async () => {
+    await remove(ref(db, `ambientes/${ambienteId}/desejos/${showConfirm.id}`))
+    setShowConfirm({ show: false, id: null })
+    setMsg("Desejo excluído!")
+    setTimeout(() => setMsg(""), 2000)
+    // Recarrega lista
+    const snap = await get(ref(db, `ambientes/${ambienteId}/desejos`))
+    if (snap.exists()) {
+      const dados = snap.val()
+      const listaBanco = Object.entries(dados).map(([id, item]) => ({ ...item, id }))
+      setDesejos(listaBanco)
+    } else {
+      setDesejos([])
+    }
+  }
+
+  const cancelDelete = () => {
+    setShowConfirm({ show: false, id: null })
+  }
 
   return (
-    <div className="max-w-5xl mx-auto mt-8 px-2">
-      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-        <h1 className="text-2xl font-bold text-primary">Desejos dos Clientes</h1>
-        <button
-          onClick={() => abrirModal()}
-          className="bg-primary text-white px-4 py-2 rounded hover:bg-primary/80 transition w-full sm:w-auto"
-        >
-          Cadastrar desejo
-        </button>
-      </div>
-      {/* Abas de lojas */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {lojasUnicas.map(loja => (
-          <button
-            key={loja}
-            onClick={() => setAba(loja)}
-            className={`px-4 py-2 rounded-t ${aba === loja ? "bg-primary text-white" : "bg-gray-200 text-gray-700"} transition`}
-          >
-            {loja}
-          </button>
-        ))}
-      </div>
-      {/* Tabela de desejos */}
-      <div className="bg-white rounded-b shadow p-2 sm:p-4 overflow-x-auto">
-        {desejosPorLoja(aba).length === 0 ? (
-          <div className="text-center text-gray-500 py-8">Nenhum desejo cadastrado para esta loja.</div>
-        ) : (
-          <table className="w-full border rounded overflow-hidden text-sm sm:text-base">
-            <thead>
-              <tr className="bg-primary/10">
-                <th className="p-2">Cliente</th>
-                <th className="p-2">Produto</th>
-                <th className="p-2">Telefone</th>
-                <th className="p-2">Tamanho</th>
-                <th className="p-2">Valor</th>
-                <th className="p-2">Vendedor</th>
-                <th className="p-2 text-center">Status</th>
-                <th className="p-2">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {desejosPorLoja(aba).map(desejo => (
-                <tr key={desejo.id} className="hover:bg-primary/5 transition">
-                  <td className="p-2 break-words">{desejo.nome}</td>
-                  <td className="p-2 break-words">{desejo.produto}</td>
-                  <td className="p-2 break-words">{desejo.tel}</td>
-                  <td className="p-2 break-words">{desejo.tamanho}</td>
-                  <td className="p-2 break-words">{desejo.valor}</td>
-                  <td className="p-2 break-words">{desejo.vendedor}</td>
-                  <td className="p-2 text-center">
-                    <button
-                      onClick={() => alternarStatus(desejo.id)}
-                      title={
-                        desejo.status === "atendido"
-                          ? "Marcar como desistido"
-                          : desejo.status === "desistido"
-                          ? "Marcar como pendente"
-                          : "Marcar como atendido"
-                      }
-                      className="focus:outline-none"
-                    >
-                      {desejo.status === "atendido" ? (
-                        <FaCheckCircle className="text-green-500 text-lg" />
-                      ) : desejo.status === "desistido" ? (
-                        <FaTimesCircle className="text-red-500 text-lg" />
-                      ) : (
-                        <FaClock className="text-gray-400 text-lg" />
-                      )}
-                    </button>
-                  </td>
-                  <td className="p-2 flex gap-2">
-                    <button
-                      title="Editar"
-                      onClick={() => handleEdit(desejo)}
-                      className="p-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-700"
-                    >
-                      <FaEdit />
-                    </button>
-                    <a
-                      href={gerarLinkWhatsapp(desejo.nome, desejo.tel, desejo.produto, desejo.vendedor)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="WhatsApp"
-                      className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-500"
-                    >
-                      <FaWhatsapp />
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-      {/* Modal de cadastro/edição */}
-      <Modal isOpen={modalAberto} onClose={fecharModal}>
-        <h2 className="text-xl font-bold mb-4">{editando ? "Editar desejo" : "Cadastrar desejo"}</h2>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <input
-            name="nome"
-            value={form.nome}
-            onChange={handleChange}
-            placeholder="Nome e sobrenome do cliente*"
-            className="w-full p-2 border rounded"
-            required
-            minLength={5}
-          />
-          <input
-            name="tel"
-            value={form.tel}
-            onChange={handleChange}
-            placeholder="Telefone (apenas números)*"
-            className="w-full p-2 border rounded"
-            required
-          />
-          <input
-            name="produto"
-            value={form.produto}
-            onChange={handleChange}
-            placeholder="Produto desejado*"
-            className="w-full p-2 border rounded"
-            required
-          />
-          <input
-            name="tamanho"
-            value={form.tamanho}
-            onChange={handleChange}
-            placeholder="Tamanho*"
-            className="w-full p-2 border rounded"
-            required
-          />
-          <input
-            name="valor"
-            value={form.valor}
-            onChange={handleChange}
-            placeholder="Valor*"
-            className="w-full p-2 border rounded"
-            required
-          />
-          <select
-            name="vendedor"
-            value={form.vendedor}
-            onChange={handleChange}
-            className="w-full p-2 border rounded"
-            required
-          >
-            <option value="">Selecione o vendedor*</option>
+    <div className="max-w-2xl mx-auto mt-8 px-2 w-full">
+      <h2 className="text-xl font-bold mb-4 text-blue-700">Desejos dos Clientes</h2>
+      <form onSubmit={editId ? handleEditSubmit : handleSubmit} className="grid gap-2 mb-4">
+        <div className="flex flex-col gap-2">
+          <input name="nome" value={editId ? editForm.nome || "" : form.nome} onChange={editId ? handleEditChange : handleChange} placeholder="Nome completo" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" />
+          <input name="tel" value={editId ? editForm.tel || "" : form.tel} onChange={editId ? handleEditChange : handleChange} placeholder="Telefone" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" />
+          <input name="produto" value={editId ? editForm.produto || "" : form.produto} onChange={editId ? handleEditChange : handleChange} placeholder="Produto desejado" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" />
+          <input name="tamanho" value={editId ? editForm.tamanho || "" : form.tamanho} onChange={editId ? handleEditChange : handleChange} placeholder="Tamanho" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" />
+          <input name="valor" value={editId ? editForm.valor || "" : form.valor} onChange={editId ? handleEditChange : handleChange} placeholder="Valor" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" />
+          <select name="vendedor" value={editId ? editForm.vendedor || "" : form.vendedor} onChange={editId ? handleEditChange : handleChange} className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base">
+            <option value="">Selecione o vendedor</option>
             {vendedores.map(v => (
               <option key={v.id || v.nome} value={v.nome}>{v.nome}</option>
             ))}
           </select>
-          <select
-            name="loja"
-            value={form.loja}
-            onChange={handleChange}
-            className="w-full p-2 border rounded"
-            required
-          >
-            <option value="">Selecione a loja*</option>
-            {lojasUnicas.map(l => (
-              <option key={l} value={l}>{l}</option>
+          <select name="loja" value={editId ? editForm.loja || "" : form.loja} onChange={editId ? handleEditChange : handleChange} className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base">
+            <option value="">Selecione a loja</option>
+            {getLojasUnicas(desejos, lojas).map(loja => (
+              <option key={loja} value={loja}>{loja}</option>
             ))}
           </select>
-          <select
-            name="categoria"
-            value={form.categoria}
-            onChange={handleChange}
-            className="w-full p-2 border rounded"
-          >
+          <select name="categoria" value={editId ? editForm.categoria || "" : form.categoria} onChange={editId ? handleEditChange : handleChange} className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base">
             <option value="">Selecione a categoria</option>
             {categorias.map(c => (
               <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
             ))}
           </select>
-          <div className="flex flex-col sm:flex-row justify-end gap-2">
-            <button type="button" onClick={fecharModal} className="px-4 py-2 rounded bg-gray-300 text-gray-700 w-full sm:w-auto">Cancelar</button>
-            <button type="submit" className="px-4 py-2 rounded bg-primary text-white w-full sm:w-auto">{editando ? "Salvar" : "Cadastrar"}</button>
+          <button type="submit" className="flex items-center gap-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition text-base w-full">
+            {editId ? "Salvar" : "Adicionar"}
+          </button>
+        </div>
+      </form>
+      {msg && (
+        <div className={`text-center py-2 rounded transition ${msg.includes("sucesso") ? "text-green-600 bg-green-50" : msg.includes("atualizado") ? "text-blue-600 bg-blue-50" : "text-red-600 bg-red-50"}`}>
+          {msg}
+        </div>
+      )}
+      <ul className="space-y-2">
+        {desejos.map(item => (
+          <li key={item.id} className="flex flex-col sm:flex-row items-center justify-between gap-2 bg-gray-50 rounded p-2">
+            <div className="flex-1 text-base">
+              <span className="mr-2 font-bold">{item.nome}</span>
+              <span className="mr-2">{item.produto}</span>
+              <span className="mr-2">{item.loja}</span>
+              <span className="mr-2">{item.vendedor}</span>
+              <span className="mr-2">{item.valor}</span>
+              <span className="mr-2">{item.categoria}</span>
+              <a href={gerarLinkWhatsapp(item.nome, item.tel, item.produto, item.vendedor)} target="_blank" rel="noopener noreferrer" className="text-green-600 underline ml-2">WhatsApp</a>
+            </div>
+            <div className="flex gap-2 mt-2 sm:mt-0">
+              <button onClick={() => handleEdit(item)} className="bg-yellow-400 hover:bg-yellow-500 text-white px-3 py-2 rounded text-base" title="Editar">
+                <FaEdit />
+              </button>
+              <button onClick={() => handleDelete(item.id)} className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded text-base" title="Excluir">
+                <FaTrash />
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {/* Confirmação de exclusão */}
+      {showConfirm.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white rounded shadow p-6 w-full max-w-xs">
+            <p className="mb-4 text-center text-lg">Deseja realmente excluir?</p>
+            <div className="flex gap-2 justify-center">
+              <button onClick={confirmDelete} className="bg-red-500 text-white px-4 py-2 rounded">Sim</button>
+              <button onClick={cancelDelete} className="bg-gray-300 text-gray-700 px-4 py-2 rounded">Não</button>
+            </div>
           </div>
-          {msg && <div className={`text-center ${msg.includes('sucesso') ? 'text-green-600' : 'text-red-600'}`}>{msg}</div>}
-        </form>
-      </Modal>
+        </div>
+      )}
     </div>
   )
 }
