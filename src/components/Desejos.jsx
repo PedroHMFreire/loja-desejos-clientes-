@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { FaEdit, FaTrash } from "react-icons/fa"
 import { db, ref, set, push, get, remove } from "../firebase"
 import { useAuth } from "../contexts/AuthContext"
+import { onValue } from "../firebase" // certifique-se que está importando
 
 function getLojasUnicas(desejos, lojas) {
   const nomesLojas = lojas.map(l => l.nome)
@@ -48,19 +49,19 @@ export default function Desejos({ vendedores, lojas, categorias }) {
 
   // Carregar desejos do Firebase ao entrar
   useEffect(() => {
-    async function carregarDesejos() {
-      if (!ambienteId) return
-      const snap = await get(ref(db, `ambientes/${ambienteId}/desejos`))
-      if (snap.exists()) {
-        const dados = snap.val()
-        const listaBanco = Object.entries(dados).map(([id, item]) => ({ ...item, id }))
-        setDesejos(listaBanco)
-      } else {
-        setDesejos([])
-      }
+  if (!ambienteId) return
+  const desejosRef = ref(db, `ambientes/${ambienteId}/desejos`)
+  const unsubscribe = onValue(desejosRef, snap => {
+    if (snap.exists()) {
+      const dados = snap.val()
+      const listaBanco = Object.entries(dados).map(([id, item]) => ({ ...item, id }))
+      setDesejos(listaBanco)
+    } else {
+      setDesejos([])
     }
-    carregarDesejos()
-  }, [ambienteId])
+  })
+  return () => unsubscribe()
+}, [ambienteId])
 
   const handleChange = e => {
     setForm({ ...form, [e.target.name]: e.target.value })
