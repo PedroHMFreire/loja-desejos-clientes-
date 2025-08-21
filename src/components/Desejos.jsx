@@ -51,16 +51,14 @@ function getUidSafe() {
   return null
 }
 
-// ---------- Hash simples para detectar mudanças ----------
+// ---------- Hash simples p/ detectar mudanças ----------
 const hash = (obj) => {
   try {
     const s = JSON.stringify(obj)
     let h = 5381
     for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i)
     return (h >>> 0).toString(16)
-  } catch {
-    return Math.random().toString(16).slice(2)
-  }
+  } catch { return Math.random().toString(16).slice(2) }
 }
 
 // ---------- Merge local x remoto ----------
@@ -98,17 +96,20 @@ export default function Desejos({ desejos, setDesejos, vendedores, lojas, catego
   const [syncError, setSyncError] = useState(false)
   const [uid, setUid] = useState(null)
 
-  // Refs para controle do backup
+  // 🔒 novo: impede backup até lermos do Firebase ao menos uma vez
+  const [remoteLoadedOnce, setRemoteLoadedOnce] = useState(false)
+
+  // Refs p/ controle do backup
   const lastSentHashRef = useRef(null)
   const debounceRef = useRef(null)
   const retryCountRef = useRef(0)
 
-  // 1) Carrega do LocalStorage na primeira montagem (local-first)
+  // 1) Carrega do LocalStorage ao montar (local-first)
   useEffect(() => {
     const local = loadFromLocalStorage("desejos") || []
-    if (Array.isArray(local) && local.length > 0) {
+    if (Array.isArray(local)) {
       setDesejos(local)
-      lastSentHashRef.current = null // força primeiro backup
+      // NÃO marcamos hash aqui; queremos decidir isso só após a primeira leitura remota
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -118,14 +119,42 @@ export default function Desejos({ desejos, setDesejos, vendedores, lojas, catego
     setUid(getUidSafe())
   }, [])
 
-  // 3) Sempre salvar local ANTES de qualquer backup (local-first)
+  // 3) Sempre salvar local (local-first)
   useEffect(() => {
     saveToLocalStorage("desejos", desejos)
   }, [desejos])
 
-  // 4) Backup automático no Firebase com debounce + retry (array inteiro)
+  // 4) Ler do Firebase UMA VEZ depois que tiver UID e mesclar
   useEffect(() => {
-    if (!uid) return
+    if (!uid || remoteLoadedOnce) return
+    (async () => {
+      try {
+        const snap = await get(ref(db, `users/${uid}/desejos`))
+        const remoteRaw = snap.exists() ? snap.val() : []
+        const remote = Array.isArray(remoteRaw) ? remoteRaw : Object.values(remoteRaw || {})
+        if (remote.length > 0) {
+          setDesejos(prev => {
+            const merged = mergeDesejos(prev, remote)
+            saveToLocalStorage("desejos", merged)
+            return merged
+          })
+        }
+      } catch (e) {
+        // ignore: se falhar, seguimos com local
+        console.warn("Leitura inicial falhou, mantendo local:", e?.code || e)
+      } finally {
+        // 🔑 Só a partir daqui permitimos backup
+        // e também “congelamos” o hash atual para evitar regravação imediata
+        lastSentHashRef.current = hash(Array.isArray(desejos) ? desejos : [])
+        setRemoteLoadedOnce(true)
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, remoteLoadedOnce])
+
+  // 5) Backup automático (DEPOIS da primeira leitura remota)
+  useEffect(() => {
+    if (!uid || !remoteLoadedOnce) return
     const currentHash = hash(desejos)
     if (currentHash === lastSentHashRef.current) return
 
@@ -151,61 +180,18 @@ export default function Desejos({ desejos, setDesejos, vendedores, lojas, catego
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [desejos, uid])
+  }, [desejos, uid, remoteLoadedOnce, setDesejos])
 
-  // 5) Backup também quando voltar a ficar online
+  // 6) Reforço: quando voltar online, tenta de novo (após leitura inicial)
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (typeof window === "undefined" || !uid || !remoteLoadedOnce) return
     const onOnline = () => {
-      if (!uid) return
       lastSentHashRef.current = null
       setDesejos(prev => [...prev])
     }
     window.addEventListener("online", onOnline)
     return () => window.removeEventListener("online", onOnline)
-  }, [uid, setDesejos])
-
-  // 6) Ao ter uid, ler do Firebase uma vez e mesclar com o local (para ver desejos dos outros)
-  useEffect(() => {
-    if (!uid) return
-    ;(async () => {
-      try {
-        const snap = await get(ref(db, `users/${uid}/desejos`))
-        const remoteRaw = snap.exists() ? snap.val() : []
-        const remote = Array.isArray(remoteRaw) ? remoteRaw : Object.values(remoteRaw || {})
-        if (remote.length === 0) return
-        setDesejos(prev => {
-          const merged = mergeDesejos(prev, remote)
-          saveToLocalStorage("desejos", merged)
-          return merged
-        })
-      } catch (e) {
-        // se falhar leitura, segue com o local
-        console.warn("Leitura de backup falhou (usando local):", e?.code || e)
-      }
-    })()
-  }, [uid, setDesejos])
-
-  // 7) (Opcional) Atualiza quando a aba voltar ao foco (traz o que outros cadastraram)
-  useEffect(() => {
-    if (typeof window === "undefined" || !uid) return
-    const onFocus = async () => {
-      try {
-        const snap = await get(ref(db, `users/${uid}/desejos`))
-        const remoteRaw = snap.exists() ? snap.val() : []
-        const remote = Array.isArray(remoteRaw) ? remoteRaw : Object.values(remoteRaw || {})
-        if (remote.length === 0) return
-        setDesejos(prev => {
-          const merged = mergeDesejos(prev, remote)
-          saveToLocalStorage("desejos", merged)
-          return merged
-        })
-      } catch {}
-    }
-    window.addEventListener("focus", onFocus)
-    return () => window.removeEventListener("focus", onFocus)
-  }, [uid, setDesejos])
+  }, [uid, remoteLoadedOnce, setDesejos])
 
   // --------- Lista memoizada ---------
   const desejosMemo = useMemo(() => desejos.map(item => ({
@@ -247,7 +233,7 @@ export default function Desejos({ desejos, setDesejos, vendedores, lojas, catego
       status: "pendente",
       updatedAt: Date.now()
     }
-    setDesejos([...desejos, novoDesejo]) // local-first (backup em paralelo)
+    setDesejos([...desejos, novoDesejo]) // local-first (backup pós-leitura remota)
     setForm({
       nome: "", tel: "", produto: "", tamanho: "", valor: "",
       vendedor: "", loja: "", categoria: ""
@@ -305,11 +291,11 @@ export default function Desejos({ desejos, setDesejos, vendedores, lojas, catego
   // --------- UI ---------
   return (
     <div className="max-w-2xl mx-auto mt-8 px-2 w-full">
-      <h2 className="text-xl font-bold mb-4 text-blue-700">Desejos dos Clientes (Local-first + Backup + Merge)</h2>
+      <h2 className="text-xl font-bold mb-4 text-blue-700">Desejos dos Clientes</h2>
 
       {/* Debug opcional */}
       <div className="text-xs text-gray-500 mb-2">
-        UID: <b>{uid || "—"}</b>
+        UID: <b>{uid || "—"}</b> • Remoto carregado: <b>{remoteLoadedOnce ? "sim" : "não"}</b>
       </div>
 
       <form onSubmit={editId ? handleEditSubmit : handleSubmit} className="grid gap-2 mb-4">
