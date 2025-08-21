@@ -4,7 +4,12 @@ import {
   getDatabase, ref, set, push, get, remove, onValue
 } from "firebase/database"
 import {
-  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+  createUserWithEmailAndPassword,
+  signInAnonymously
 } from "firebase/auth"
 
 // ⚠️ Confira se estes valores batem com o seu Console Firebase (Projeto > Configurações > Seu app Web)
@@ -39,13 +44,11 @@ export async function diagnosticTest() {
     console.info("[Diag] Database URL:", app.options.databaseURL)
     console.info("[Diag] Auth uid:", uid || "(sem login)")
 
-    // grava
     const targetRef = ref(db, `${basePath}`)
     const payload = { ok: true, t: Date.now(), via: "diagnosticTest" }
     const pushRes = await push(targetRef, payload)
     console.info("[Diag] Push OK. Key:", pushRes.key)
 
-    // lê de volta do nó pai
     const snap = await get(ref(db, basePath))
     console.info("[Diag] Read exists?", snap.exists())
     if (snap.exists()) {
@@ -54,7 +57,6 @@ export async function diagnosticTest() {
       console.info(`[Diag] Registros lidos em "${basePath}":`, keys.length, keys.slice(-3))
     }
 
-    // leitura de verificação extra (quando logado) no nó raiz do usuário
     if (uid) {
       const userSnap = await get(ref(db, node))
       console.info("[Diag] user root exists?", userSnap.exists())
@@ -68,9 +70,8 @@ export async function diagnosticTest() {
   }
 }
 
-// Disponibiliza atalho global para facilitar testes no console (dev e prod)
+// Atalho global para testar no console
 if (typeof window !== "undefined") {
-  // chama: window.fbDiag()
   window.fbDiag = diagnosticTest
 }
 
@@ -78,5 +79,5 @@ if (typeof window !== "undefined") {
 export {
   app,
   db, ref, set, push, get, remove, onValue,
-  auth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword
+  auth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, signInAnonymously
 }

@@ -1,23 +1,23 @@
-import { useState, useEffect, useMemo } from "react"
+// src/components/Desejos.jsx
+import { useState, useEffect, useMemo, useRef } from "react"
 import { FaEdit, FaTrash, FaWhatsapp, FaCheckCircle, FaClock, FaTimesCircle } from "react-icons/fa"
-import { addToLocalStorage, loadFromLocalStorage, updateInLocalStorage, removeFromLocalStorage, saveToLocalStorage } from "../utils/localStorage"
+import { saveToLocalStorage, loadFromLocalStorage } from "../utils/localStorage"
 import { syncToFirebase } from "../utils/syncFirebase"
+import { auth, db, ref, get } from "../firebase"
 
+// ---------- Helpers ----------
 function gerarLinkWhatsapp(nome, tel, produto, vendedor) {
   const msg = `Oi, ${sanitize(nome)}!\n\nSeu desejo é uma ordem! E já começamos a trabalhar para atendê-lo o quanto antes!\n\nProduto desejado: ${sanitize(produto)}\nVendedor responsável: ${sanitize(vendedor)}`
   return `https://wa.me/55${tel.replace(/\D/g, "")}?text=${encodeURIComponent(msg)}`
 }
-
 function nomeCompletoValido(nome) {
   if (!nome) return false
   const partes = nome.trim().split(/\s+/)
   return partes.length >= 2 && partes.every(p => p.length >= 2)
 }
-
 function sanitize(str) {
   return String(str).replace(/[<>]/g, "")
 }
-
 const nextStatus = { pendente: "atendido", atendido: "desistido", desistido: "pendente" }
 const statusIcon = {
   pendente: <FaClock className="text-blue-400" />,
@@ -25,16 +25,67 @@ const statusIcon = {
   desistido: <FaTimesCircle className="text-red-500" />
 }
 
+// ---------- UID seguro (não altera sua lógica de login) ----------
+function getUidSafe() {
+  try {
+    const viaAuth = auth?.currentUser?.uid
+    if (viaAuth) return viaAuth
+
+    if (typeof window !== "undefined") {
+      const API_KEY = "AIzaSyB3Epc580YmJDIxERO31njrBrYqnYcdeBo"
+      const KEY_OFFICIAL = `firebase:authUser:${API_KEY}:[DEFAULT]`
+      const KEY_FALLBACK = `firebase:authUser:anotesante-default-rtdb:[DEFAULT]`
+
+      const rawOfficial = localStorage.getItem(KEY_OFFICIAL)
+      if (rawOfficial) {
+        const parsed = JSON.parse(rawOfficial)
+        if (parsed?.uid) return parsed.uid
+      }
+      const rawFallback = localStorage.getItem(KEY_FALLBACK)
+      if (rawFallback) {
+        const parsed = JSON.parse(rawFallback)
+        if (parsed?.uid) return parsed.uid
+      }
+    }
+  } catch {}
+  return null
+}
+
+// ---------- Hash simples para detectar mudanças ----------
+const hash = (obj) => {
+  try {
+    const s = JSON.stringify(obj)
+    let h = 5381
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i)
+    return (h >>> 0).toString(16)
+  } catch {
+    return Math.random().toString(16).slice(2)
+  }
+}
+
+// ---------- Merge local x remoto ----------
+function mergeDesejos(localArr = [], remoteArr = []) {
+  const byId = new Map()
+  for (const it of localArr) byId.set(it.id, it)
+  for (const r of remoteArr) {
+    const l = byId.get(r.id)
+    if (!l) {
+      byId.set(r.id, r)
+    } else {
+      const tL = l.updatedAt || Number(l.id) || 0
+      const tR = r.updatedAt || Number(r.id) || 0
+      byId.set(r.id, tR > tL ? r : l)
+    }
+  }
+  return Array.from(byId.values())
+}
+
 export default function Desejos({ desejos, setDesejos, vendedores, lojas, categorias }) {
+  // Normalizações de props
   desejos = Array.isArray(desejos) ? desejos : []
   vendedores = Array.isArray(vendedores) ? vendedores : []
   lojas = Array.isArray(lojas) ? lojas : []
   categorias = Array.isArray(categorias) ? categorias : []
-  // Recupera UID do usuário
-  let uid = null
-  try {
-    uid = JSON.parse(localStorage.getItem('firebase:authUser:anotesante-default-rtdb:[DEFAULT]'))?.uid
-  } catch {}
 
   const [form, setForm] = useState({
     nome: "", tel: "", produto: "", tamanho: "", valor: "",
@@ -45,42 +96,132 @@ export default function Desejos({ desejos, setDesejos, vendedores, lojas, catego
   const [msg, setMsg] = useState("")
   const [showConfirm, setShowConfirm] = useState({ show: false, id: null })
   const [syncError, setSyncError] = useState(false)
+  const [uid, setUid] = useState(null)
 
-  // Carrega desejos do localStorage ao iniciar (se não vierem por props)
+  // Refs para controle do backup
+  const lastSentHashRef = useRef(null)
+  const debounceRef = useRef(null)
+  const retryCountRef = useRef(0)
+
+  // 1) Carrega do LocalStorage na primeira montagem (local-first)
   useEffect(() => {
-    if (desejos.length === 0) {
-      const local = loadFromLocalStorage("desejos")
-      if (local && local.length > 0) setDesejos(local)
+    const local = loadFromLocalStorage("desejos") || []
+    if (Array.isArray(local) && local.length > 0) {
+      setDesejos(local)
+      lastSentHashRef.current = null // força primeiro backup
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Sincroniza com localStorage e Firebase sempre que desejos mudam
-useEffect(() => {
-  saveToLocalStorage("desejos", desejos)
-  if (uid) {
-    syncToFirebase(`users/${uid}/desejos`, desejos).catch(() => setSyncError(true))
-  }
-}, [desejos])
+  // 2) Captura UID (sem alterar login)
+  useEffect(() => {
+    setUid(getUidSafe())
+  }, [])
 
-  // Otimiza renderização da lista
+  // 3) Sempre salvar local ANTES de qualquer backup (local-first)
+  useEffect(() => {
+    saveToLocalStorage("desejos", desejos)
+  }, [desejos])
+
+  // 4) Backup automático no Firebase com debounce + retry (array inteiro)
+  useEffect(() => {
+    if (!uid) return
+    const currentHash = hash(desejos)
+    if (currentHash === lastSentHashRef.current) return
+
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(async () => {
+      try {
+        await syncToFirebase(`users/${uid}/desejos`, desejos)
+        lastSentHashRef.current = currentHash
+        retryCountRef.current = 0
+        setSyncError(false)
+      } catch (e) {
+        setSyncError(true)
+        const attempts = Math.min(retryCountRef.current + 1, 5)
+        retryCountRef.current = attempts
+        const delay = Math.pow(2, attempts - 1) * 1000
+        setTimeout(() => {
+          lastSentHashRef.current = null
+          setDesejos(prev => [...prev]) // força novo ciclo
+        }, delay)
+      }
+    }, 400)
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desejos, uid])
+
+  // 5) Backup também quando voltar a ficar online
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const onOnline = () => {
+      if (!uid) return
+      lastSentHashRef.current = null
+      setDesejos(prev => [...prev])
+    }
+    window.addEventListener("online", onOnline)
+    return () => window.removeEventListener("online", onOnline)
+  }, [uid, setDesejos])
+
+  // 6) Ao ter uid, ler do Firebase uma vez e mesclar com o local (para ver desejos dos outros)
+  useEffect(() => {
+    if (!uid) return
+    ;(async () => {
+      try {
+        const snap = await get(ref(db, `users/${uid}/desejos`))
+        const remoteRaw = snap.exists() ? snap.val() : []
+        const remote = Array.isArray(remoteRaw) ? remoteRaw : Object.values(remoteRaw || {})
+        if (remote.length === 0) return
+        setDesejos(prev => {
+          const merged = mergeDesejos(prev, remote)
+          saveToLocalStorage("desejos", merged)
+          return merged
+        })
+      } catch (e) {
+        // se falhar leitura, segue com o local
+        console.warn("Leitura de backup falhou (usando local):", e?.code || e)
+      }
+    })()
+  }, [uid, setDesejos])
+
+  // 7) (Opcional) Atualiza quando a aba voltar ao foco (traz o que outros cadastraram)
+  useEffect(() => {
+    if (typeof window === "undefined" || !uid) return
+    const onFocus = async () => {
+      try {
+        const snap = await get(ref(db, `users/${uid}/desejos`))
+        const remoteRaw = snap.exists() ? snap.val() : []
+        const remote = Array.isArray(remoteRaw) ? remoteRaw : Object.values(remoteRaw || {})
+        if (remote.length === 0) return
+        setDesejos(prev => {
+          const merged = mergeDesejos(prev, remote)
+          saveToLocalStorage("desejos", merged)
+          return merged
+        })
+      } catch {}
+    }
+    window.addEventListener("focus", onFocus)
+    return () => window.removeEventListener("focus", onFocus)
+  }, [uid, setDesejos])
+
+  // --------- Lista memoizada ---------
   const desejosMemo = useMemo(() => desejos.map(item => ({
     ...item,
     status: item.status || "pendente"
   })), [desejos])
 
+  // --------- Handlers ---------
   const handleChange = e => {
     let value = e.target.value
-    if (e.target.name === "valor") {
-      // Aceita apenas números e vírgula/ponto
-      value = value.replace(/[^0-9.,]/g, "")
-    }
+    if (e.target.name === "valor") value = value.replace(/[^0-9.,]/g, "")
     setForm({ ...form, [e.target.name]: value })
   }
   const handleEditChange = e => {
     let value = e.target.value
-    if (e.target.name === "valor") {
-      value = value.replace(/[^0-9.,]/g, "")
-    }
+    if (e.target.name === "valor") value = value.replace(/[^0-9.,]/g, "")
     setEditForm({ ...editForm, [e.target.name]: value })
   }
 
@@ -103,22 +244,16 @@ useEffect(() => {
       categoria: sanitize(form.categoria),
       valor: form.valor.replace(",", "."),
       id: Date.now().toString(),
-      status: "pendente"
+      status: "pendente",
+      updatedAt: Date.now()
     }
-    const novaLista = [...desejos, novoDesejo]
-    setDesejos(novaLista)
+    setDesejos([...desejos, novoDesejo]) // local-first (backup em paralelo)
     setForm({
       nome: "", tel: "", produto: "", tamanho: "", valor: "",
       vendedor: "", loja: "", categoria: ""
     })
     setMsg("Desejo cadastrado com sucesso!")
     setTimeout(() => setMsg(""), 3500)
-    if (uid) {
-      console.log("[SYNC] Enviando desejos para Firebase:", uid, novaLista)
-      syncToFirebase(`users/${uid}/desejos`, novaLista)
-        .then(() => console.log("[SYNC] Firebase OK"))
-        .catch(e => console.error("[SYNC] Firebase ERRO:", e))
-    }
   }
 
   const handleEdit = item => {
@@ -140,27 +275,19 @@ useEffect(() => {
       loja: sanitize(editForm.loja),
       categoria: sanitize(editForm.categoria),
       valor: editForm.valor.replace(",", "."),
-      id: editId
+      id: editId,
+      updatedAt: Date.now()
     }
-    const atualizados = desejos.map(d =>
-      d.id === editId ? atualizado : d
-    )
-    setDesejos(atualizados)
+    setDesejos(desejos.map(d => d.id === editId ? atualizado : d))
     setEditId(null)
     setEditForm({})
     setMsg("Desejo atualizado!")
     setTimeout(() => setMsg(""), 3500)
-    if (uid) {
-      console.log("[SYNC] Editando desejos no Firebase:", uid, atualizados)
-      syncToFirebase(`users/${uid}/desejos`, atualizados)
-        .then(() => console.log("[SYNC] Firebase OK"))
-        .catch(e => console.error("[SYNC] Firebase ERRO:", e))
-    }
   }
 
   const handleStatus = id => {
     setDesejos(desejos.map(d =>
-      d.id === id ? { ...d, status: nextStatus[d.status] || "pendente" } : d
+      d.id === id ? { ...d, status: nextStatus[d.status] || "pendente", updatedAt: Date.now() } : d
     ))
     setMsg("Status atualizado!")
     setTimeout(() => setMsg(""), 2500)
@@ -168,53 +295,58 @@ useEffect(() => {
 
   const handleDelete = id => setShowConfirm({ show: true, id })
   const confirmDelete = () => {
-    const novaLista = desejos.filter(d => d.id !== showConfirm.id)
-    setDesejos(novaLista)
+    setDesejos(desejos.filter(d => d.id !== showConfirm.id))
     setShowConfirm({ show: false, id: null })
     setMsg("Desejo excluído!")
     setTimeout(() => setMsg(""), 3500)
-    if (uid) {
-      console.log("[SYNC] Excluindo desejos no Firebase:", uid, novaLista)
-      syncToFirebase(`users/${uid}/desejos`, novaLista)
-        .then(() => console.log("[SYNC] Firebase OK"))
-        .catch(e => console.error("[SYNC] Firebase ERRO:", e))
-    }
   }
   const cancelDelete = () => setShowConfirm({ show: false, id: null })
 
+  // --------- UI ---------
   return (
     <div className="max-w-2xl mx-auto mt-8 px-2 w-full">
-      <h2 className="text-xl font-bold mb-4 text-blue-700">Desejos dos Clientes</h2>
+      <h2 className="text-xl font-bold mb-4 text-blue-700">Desejos dos Clientes (Local-first + Backup + Merge)</h2>
+
+      {/* Debug opcional */}
+      <div className="text-xs text-gray-500 mb-2">
+        UID: <b>{uid || "—"}</b>
+      </div>
+
       <form onSubmit={editId ? handleEditSubmit : handleSubmit} className="grid gap-2 mb-4">
         <div className="flex flex-col gap-2">
-          <input name="nome" value={editId ? editForm.nome || "" : form.nome} onChange={editId ? handleEditChange : handleChange} placeholder="Nome completo" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" />
-          <input name="tel" value={editId ? editForm.tel || "" : form.tel} onChange={editId ? handleEditChange : handleChange} placeholder="Telefone" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" />
-          <input name="produto" value={editId ? editForm.produto || "" : form.produto} onChange={editId ? handleEditChange : handleChange} placeholder="Produto desejado" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" />
-          <input name="tamanho" value={editId ? editForm.tamanho || "" : form.tamanho} onChange={editId ? handleEditChange : handleChange} placeholder="Tamanho" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" />
-          <input name="valor" value={editId ? editForm.valor || "" : form.valor} onChange={editId ? handleEditChange : handleChange} placeholder="Valor" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" inputMode="decimal" />
-          <select name="vendedor" value={editId ? editForm.vendedor || "" : form.vendedor} onChange={editId ? handleEditChange : handleChange} className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base">
+          <input name="nome" value={editId ? (editForm.nome || "") : form.nome} onChange={editId ? handleEditChange : handleChange} placeholder="Nome completo" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" />
+          <input name="tel" value={editId ? (editForm.tel || "") : form.tel} onChange={editId ? handleEditChange : handleChange} placeholder="Telefone" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" />
+          <input name="produto" value={editId ? (editForm.produto || "") : form.produto} onChange={editId ? handleEditChange : handleChange} placeholder="Produto desejado" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" />
+          <input name="tamanho" value={editId ? (editForm.tamanho || "") : form.tamanho} onChange={editId ? handleEditChange : handleChange} placeholder="Tamanho" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" />
+          <input name="valor" value={editId ? (editForm.valor || "") : form.valor} onChange={editId ? handleEditChange : handleChange} placeholder="Valor" className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base" inputMode="decimal" />
+
+          <select name="vendedor" value={editId ? (editForm.vendedor || "") : form.vendedor} onChange={editId ? handleEditChange : handleChange} className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base">
             <option value="">Selecione o vendedor</option>
             {vendedores.map(v => (
               <option key={v.id || v.nome} value={v.nome}>{v.nome}</option>
             ))}
           </select>
-          <select name="loja" value={editId ? editForm.loja || "" : form.loja} onChange={editId ? handleEditChange : handleChange} className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base">
+
+          <select name="loja" value={editId ? (editForm.loja || "") : form.loja} onChange={editId ? handleEditChange : handleChange} className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base">
             <option value="">Selecione a loja</option>
             {lojas.map(loja => (
               <option key={loja.id || loja.nome} value={loja.nome}>{loja.nome}</option>
             ))}
           </select>
-          <select name="categoria" value={editId ? editForm.categoria || "" : form.categoria} onChange={editId ? handleEditChange : handleChange} className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base">
+
+          <select name="categoria" value={editId ? (editForm.categoria || "") : form.categoria} onChange={editId ? handleEditChange : handleChange} className="p-3 h-12 bg-gray-100 border border-gray-200 rounded w-full text-base">
             <option value="">Selecione a categoria</option>
             {categorias.map(c => (
               <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
             ))}
           </select>
+
           <button type="submit" className="flex items-center gap-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition text-base w-full">
             {editId ? "Salvar" : "Adicionar"}
           </button>
         </div>
       </form>
+
       {msg && (
         <div className={`text-center py-2 rounded transition ${msg.includes("sucesso") ? "text-green-600 bg-green-50" : msg.includes("atualizado") ? "text-blue-600 bg-blue-50" : "text-red-600 bg-red-50"}`}>
           {msg}
@@ -225,6 +357,7 @@ useEffect(() => {
           Não foi possível sincronizar com o backup. Seus dados estão salvos localmente.
         </div>
       )}
+
       <ul className="space-y-2">
         {desejosMemo.map(item => {
           const status = item.status || "pendente"
@@ -260,6 +393,7 @@ useEffect(() => {
           )
         })}
       </ul>
+
       {showConfirm.show && (
         <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
           <div className="bg-white rounded shadow p-6 w-full max-w-xs">
