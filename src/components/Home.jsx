@@ -1,17 +1,11 @@
 // src/components/Home.jsx
-import { useState } from "react"
+import { FaCheckCircle, FaClock, FaTimesCircle, FaPlus } from "react-icons/fa"
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
+import { useState, useEffect } from "react"
 import Modal from "./Modal"
 import { useAuth } from "../contexts/AuthContext"
-import { db, ref, push } from "../firebase.js"
-import {
-  FaCheckCircle,
-  FaClock,
-  FaTimesCircle,
-  FaPlus
-} from "react-icons/fa"
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
-} from "recharts"
+import { addToLocalStorage, loadFromLocalStorage, saveToLocalStorage } from "../utils/localStorage"
+import { syncToFirebase } from "../utils/syncFirebase"
 
 function nomeCompletoValido(nome) {
   if (!nome) return false
@@ -26,9 +20,6 @@ const STATUS_COLORS = {
 }
 
 export default function Home({ desejos = [], setDesejos, vendedores = [], lojas = [], categorias = [] }) {
-  const { user } = useAuth()
-
-  // Modal de cadastro
   const [modalAberto, setModalAberto] = useState(false)
   const [msg, setMsg] = useState("")
   const [form, setForm] = useState({
@@ -41,6 +32,7 @@ export default function Home({ desejos = [], setDesejos, vendedores = [], lojas 
     loja: "",
     categoria: ""
   })
+  const [syncError, setSyncError] = useState(false)
 
   // Indicadores
   const total = desejos.length
@@ -95,10 +87,6 @@ export default function Home({ desejos = [], setDesejos, vendedores = [], lojas 
 
   const handleSubmit = async e => {
     e.preventDefault()
-    if (!user?.uid) {
-      setMsg("Você precisa estar logado.")
-      return
-    }
     if (!nomeCompletoValido(form.nome)) {
       setMsg("Digite o nome e sobrenome do cliente (mínimo 2 letras cada).")
       return
@@ -113,18 +101,17 @@ export default function Home({ desejos = [], setDesejos, vendedores = [], lojas 
         ...form,
         valor: parseFloat(form.valor) || 0,
         status: "pendente",
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        id: Date.now().toString()
       }
-      // grava no RTDB isolado por usuário
-      await push(ref(db, `users/${user.uid}/desejos`), payload)
-
+      setDesejos([...desejos, payload])
       setMsg("Desejo cadastrado com sucesso!")
       setTimeout(() => {
         fecharModal()
       }, 800)
-      // Não atualizamos setDesejos aqui para evitar duplicidade — o App.jsx já escuta via onValue
     } catch (err) {
       setMsg("Erro ao salvar. Tente novamente.")
+      setSyncError(true)
       console.error("Erro ao cadastrar desejo:", err)
     }
   }
@@ -328,6 +315,11 @@ export default function Home({ desejos = [], setDesejos, vendedores = [], lojas 
           {msg && (
             <div className={`text-center ${msg.toLowerCase().includes("sucesso") ? "text-green-600" : "text-red-600"}`}>
               {msg}
+            </div>
+          )}
+          {syncError && (
+            <div className="text-yellow-600 text-center mt-2">
+              Não foi possível sincronizar com o backup. Seus dados estão salvos localmente.
             </div>
           )}
         </form>

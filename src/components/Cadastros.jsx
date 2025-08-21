@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react"
 import { FaPlus, FaEdit, FaTrash } from "react-icons/fa"
-import { db, ref, set, push, get, remove } from "../firebase.js"
 import { useAuth } from "../contexts/AuthContext"
+import { addToLocalStorage, loadFromLocalStorage, updateInLocalStorage, removeFromLocalStorage, saveToLocalStorage } from "../utils/localStorage"
+import { syncToFirebase } from "../utils/syncFirebase"
 
 function CadastroSimples({ titulo, campos, tipo, uid }) {
   const [form, setForm] = useState({})
@@ -10,36 +11,38 @@ function CadastroSimples({ titulo, campos, tipo, uid }) {
   const [msg, setMsg] = useState("")
   const [showConfirm, setShowConfirm] = useState({ show: false, id: null })
   const [lista, setLista] = useState([])
+  const [syncError, setSyncError] = useState(false)
 
-  // Carregar dados do Firebase ao entrar
+  // Carregar dados do Local Storage ao entrar. Se vazio, buscar do Firebase.
   useEffect(() => {
-    async function carregarDados() {
-      if (!uid) { setLista([]); return }
-      const snap = await get(ref(db, `users/${uid}/${tipo}`))
-      if (snap.exists()) {
-        const dados = snap.val() || {}
-        const listaBanco = Object.entries(dados).map(([id, item]) => ({ ...item, id }))
-        setLista(listaBanco)
-      } else {
-        setLista([])
-      }
+    const local = loadFromLocalStorage(tipo)
+    if (local && local.length > 0) {
+      setLista(local)
+    } else if (uid) {
+      import("../firebase.js").then(({ db, ref, get }) => {
+        get(ref(db, `users/${uid}/${tipo}`)).then(snap => {
+          if (snap.exists()) {
+            const dados = snap.val() || {}
+            const listaBanco = Object.entries(dados).map(([id, item]) => ({ ...item, id }))
+            setLista(listaBanco)
+            saveToLocalStorage(tipo, listaBanco)
+          } else {
+            setLista([])
+          }
+        })
+      })
     }
-    carregarDados()
   }, [uid, tipo])
+
+  // Sincroniza sempre que lista muda
+  useEffect(() => {
+    if (uid && lista.length > 0) {
+      syncToFirebase(`users/${uid}/${tipo}`, lista).catch(() => setSyncError(true))
+    }
+  }, [lista, uid, tipo])
 
   const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value })
   const handleEditChange = e => setEditForm({ ...editForm, [e.target.name]: e.target.value })
-
-  const recarregar = async () => {
-    const snap = await get(ref(db, `users/${uid}/${tipo}`))
-    if (snap.exists()) {
-      const dados = snap.val() || {}
-      const listaBanco = Object.entries(dados).map(([id, item]) => ({ ...item, id }))
-      setLista(listaBanco)
-    } else {
-      setLista([])
-    }
-  }
 
   const handleSubmit = async e => {
     e.preventDefault()
@@ -47,12 +50,12 @@ function CadastroSimples({ titulo, campos, tipo, uid }) {
       setMsg("Preencha todos os campos.")
       return
     }
-    const novoRef = push(ref(db, `users/${uid}/${tipo}`))
-    await set(novoRef, { ...form })
+    const novoItem = { ...form, id: Date.now().toString() }
+    const listaAtualizada = addToLocalStorage(tipo, novoItem)
+    setLista(listaAtualizada)
     setForm({})
     setMsg("Cadastro realizado com sucesso!")
-    setTimeout(() => setMsg(""), 2000)
-    await recarregar()
+    setTimeout(() => setMsg("") , 2000)
   }
 
   const handleEdit = item => {
@@ -62,22 +65,24 @@ function CadastroSimples({ titulo, campos, tipo, uid }) {
 
   const handleEditSubmit = async e => {
     e.preventDefault()
-    await set(ref(db, `users/${uid}/${tipo}/${editId}`), { ...editForm })
+    const listaAtualizada = updateInLocalStorage(tipo, editId, editForm)
+    setLista(listaAtualizada)
     setEditId(null)
     setEditForm({})
     setMsg("Cadastro atualizado!")
-    setTimeout(() => setMsg(""), 2000)
-    await recarregar()
+    setTimeout(() => setMsg("") , 2000)
+    await syncBackup(listaAtualizada)
   }
 
   const handleDelete = id => setShowConfirm({ show: true, id })
 
   const confirmDelete = async () => {
-    await remove(ref(db, `users/${uid}/${tipo}/${showConfirm.id}`))
+    const listaAtualizada = removeFromLocalStorage(tipo, showConfirm.id)
+    setLista(listaAtualizada)
     setShowConfirm({ show: false, id: null })
     setMsg("Cadastro excluído!")
-    setTimeout(() => setMsg(""), 2000)
-    await recarregar()
+    setTimeout(() => setMsg("") , 2000)
+    await syncBackup(listaAtualizada)
   }
 
   const cancelDelete = () => setShowConfirm({ show: false, id: null })
@@ -116,6 +121,11 @@ function CadastroSimples({ titulo, campos, tipo, uid }) {
           : "text-red-600 bg-red-50"
         }`}>
           {msg}
+        </div>
+      )}
+      {syncError && (
+        <div className="text-yellow-600 text-center mt-2">
+          Não foi possível sincronizar com o backup. Seus dados estão salvos localmente.
         </div>
       )}
 

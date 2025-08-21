@@ -1,6 +1,8 @@
 import { useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
-import { db, ref, set, auth } from "../firebase.js"
+import { auth } from "../firebase.js"
+import { saveToLocalStorage, loadFromLocalStorage } from "../utils/localStorage"
+import { syncToFirebase } from "../utils/syncFirebase"
 
 export default function CadastroAmbiente({ onCadastro }) {
   const [form, setForm] = useState({
@@ -34,7 +36,8 @@ export default function CadastroAmbiente({ onCadastro }) {
         email,
         telefone,
         senha,
-        role: "gerente"
+        role: "gerente",
+        ambienteId: nomeAmbiente // usa nomeAmbiente como id local
       })
 
       // 2) Login automático
@@ -47,14 +50,18 @@ export default function CadastroAmbiente({ onCadastro }) {
         return
       }
 
-      // 4) Salva o “ambiente” isolado por usuário
-      //    Regras: users/$uid somente o próprio usuário lê/escreve
-      await set(ref(db, `users/${uid}/ambiente`), {
+      // 4) Salva o ambiente localmente
+      const ambiente = {
         id: uid,
         nome: nomeAmbiente,
         gerenteEmail: email,
+        telefone,
         criadoEm: Date.now()
-      })
+      }
+  saveToLocalStorage('ambiente', ambiente)
+
+  // Sincroniza sempre que ambiente muda
+  syncToFirebase(`users/${uid}/ambiente`, ambiente).catch(() => {})
 
       setMsg("Cadastro realizado! Redirecionando...")
       setTimeout(() => {

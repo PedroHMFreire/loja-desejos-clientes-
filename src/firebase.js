@@ -13,7 +13,7 @@ const firebaseConfig = {
   authDomain: "anotesante.firebaseapp.com",
   databaseURL: "https://anotesante-default-rtdb.firebaseio.com",
   projectId: "anotesante",
-  storageBucket: "anotesante.appspot.com",
+  storageBucket: "anotesante.firebasestorage.app",
   messagingSenderId: "367190716781",
   appId: "1:367190716781:web:ff5042989b01758ce72a64"
 }

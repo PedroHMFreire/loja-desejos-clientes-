@@ -1,17 +1,20 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
+import { loadFromLocalStorage } from '../utils/localStorage'
+import { syncToFirebase } from '../utils/syncFirebase'
 
-export default function Ranking({ desejos }) {
+export default function Ranking({ desejos = [] }) {
   const [filtros, setFiltros] = useState({ vendedor: '', loja: '', dataInicial: '', dataFinal: '' })
+  const [msg, setMsg] = useState("")
 
   const handleFiltro = e => setFiltros({ ...filtros, [e.target.name]: e.target.value })
 
   // Filtro por período, vendedor e loja
   const filtrarPorPeriodo = d => {
-    if (!d.data) return false
-    const dataDesejo = new Date(d.data)
+    if (!d.createdAt) return false
+    const dataDesejo = new Date(d.createdAt)
     const dataIni = filtros.dataInicial ? new Date(filtros.dataInicial) : null
     const dataFim = filtros.dataFinal ? new Date(filtros.dataFinal) : null
     if (dataIni && dataDesejo < dataIni) return false
@@ -57,6 +60,17 @@ export default function Ranking({ desejos }) {
     doc.save("ranking.pdf")
   }
 
+  // Backup manual para Firebase
+  const backupFirebase = async () => {
+    try {
+      await syncToFirebase(`users/${uid}/desejos`, desejos)
+      setMsg('Backup realizado com sucesso!')
+    } catch {
+      setMsg('Falha ao realizar backup!')
+    }
+    setTimeout(() => setMsg(''), 2000)
+  }
+
   const vendedoresUnicos = [...new Set(desejos.map(d => d.vendedor).filter(Boolean))]
   const lojasUnicas = [...new Set(desejos.map(d => d.loja).filter(Boolean))]
 
@@ -97,12 +111,19 @@ export default function Ranking({ desejos }) {
           Exportar PDF
         </button>
         <button
+          onClick={backupFirebase}
+          className="bg-orange-500 text-white px-4 py-2 rounded"
+        >
+          Backup Firebase
+        </button>
+        <button
           onClick={() => setFiltros({ vendedor: '', loja: '', dataInicial: '', dataFinal: '' })}
           className="bg-gray-400 text-white px-4 py-2 rounded ml-auto"
         >
           Limpar Filtros
         </button>
       </div>
+      {msg && <div className="text-center text-green-600 mb-2">{msg}</div>}
       <div className="mb-2 text-right font-semibold">
         Total geral: {totalGeral.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
       </div>

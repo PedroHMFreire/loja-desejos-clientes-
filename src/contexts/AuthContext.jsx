@@ -74,15 +74,16 @@ export function AuthProvider({ children }) {
     return { uid, nome, email, telefone, role }
   }
 
-  const value = {
-    user,         // objeto do Firebase Auth (tem uid, email, etc.)
-    profile,      // { nome, telefone, role, ... } de users/{uid}/profile
-    role,
-    loading,
-    login,
-    logout,
-    cadastrarUsuario,
-  }
+const value = {
+  user,         // objeto do Firebase Auth (tem uid, email, etc.)
+  profile,      // { nome, telefone, role, ... } de users/{uid}/profile
+  role,
+  ambienteId: profile?.ambienteId || null, // <-- Adicione esta linha
+  loading,
+  login,
+  logout,
+  cadastrarUsuario,
+}
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
