@@ -1,16 +1,34 @@
 // utils/syncFirebase.js
-import { db, ref, set } from "../firebase"
+import { db, ref, push, set, update, remove } from "../firebase"
 
 /**
- * Sincroniza dados (array/objeto) no caminho informado do RTDB.
- * Lança erro para que o chamador possa tratar (exibir aviso).
+ * 🔧 Compat: mantém a API antiga usada por Home/Cadastros/Ranking.
+ * Grava "data" exatamente no caminho "path".
  */
 export async function syncToFirebase(path, data) {
-  try {
-    await set(ref(db, path), data)
-    console.log("[SYNC] Dados enviados para Firebase:", path, data)
-  } catch (e) {
-    console.error("[SYNC] Erro ao enviar para Firebase:", path, e)
-    throw e // importante: deixa o componente saber que falhou
-  }
+  return set(ref(db, path), data)
+}
+
+/** ===========================
+ *  CRUD específico de DESEJOS
+ *  =========================== */
+
+// Adiciona um desejo novo (gera key automática)
+export async function addDesejo(uid, desejo) {
+  if (!uid) throw new Error("UID ausente")
+  const desejoRef = push(ref(db, `users/${uid}/desejos`))
+  await set(desejoRef, desejo)
+  return desejoRef.key
+}
+
+// Atualiza um desejo existente
+export async function updateDesejo(uid, id, desejo) {
+  if (!uid || !id) throw new Error("UID ou ID ausente")
+  await update(ref(db, `users/${uid}/desejos/${id}`), desejo)
+}
+
+// Remove um desejo
+export async function deleteDesejo(uid, id) {
+  if (!uid || !id) throw new Error("UID ou ID ausente")
+  await remove(ref(db, `users/${uid}/desejos/${id}`))
 }

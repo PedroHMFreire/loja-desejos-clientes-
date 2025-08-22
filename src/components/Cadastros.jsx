@@ -13,7 +13,19 @@ function CadastroSimples({ titulo, campos, tipo, uid }) {
   const [lista, setLista] = useState([])
   const [syncError, setSyncError] = useState(false)
 
-  // Carregar dados do Local Storage ao entrar. Se vazio, buscar do Firebase.
+  // 🔧 helper: envia o snapshot atual para o Firebase
+  const syncBackup = async (data) => {
+    if (!uid) return
+    try {
+      await syncToFirebase(`users/${uid}/${tipo}`, data) // grava exatamente o que está em "data"
+      setSyncError(false)
+    } catch (e) {
+      console.warn("[Cadastros] Falha no backup:", e)
+      setSyncError(true)
+    }
+  }
+
+  // Carregar do Local Storage. Se vazio, buscar do Firebase.
   useEffect(() => {
     const local = loadFromLocalStorage(tipo)
     if (local && local.length > 0) {
@@ -22,24 +34,29 @@ function CadastroSimples({ titulo, campos, tipo, uid }) {
       import("../firebase.js").then(({ db, ref, get }) => {
         get(ref(db, `users/${uid}/${tipo}`)).then(snap => {
           if (snap.exists()) {
-            const dados = snap.val() || {}
-            const listaBanco = Object.entries(dados).map(([id, item]) => ({ ...item, id }))
+            const dados = snap.val() || []
+            // suporta tanto objeto {id: item} quanto array
+            const listaBanco = Array.isArray(dados)
+              ? dados.map((item, idx) => ({ id: item?.id ?? String(idx), ...item }))
+              : Object.entries(dados).map(([id, item]) => ({ id, ...item }))
+
             setLista(listaBanco)
             saveToLocalStorage(tipo, listaBanco)
           } else {
             setLista([])
           }
+        }).catch(err => {
+          console.warn("[Cadastros] Falha ao ler do Firebase:", err)
         })
       })
     }
   }, [uid, tipo])
 
-  // Sincroniza sempre que lista muda
+  // Sincroniza sempre que a lista muda (inclusive quando esvazia)
   useEffect(() => {
-    if (uid && lista.length > 0) {
-      syncToFirebase(`users/${uid}/${tipo}`, lista).catch(() => setSyncError(true))
-    }
-  }, [lista, uid, tipo])
+    if (!uid) return
+    syncBackup(lista)
+  }, [lista, uid]) // tipo é fixo por instância
 
   const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value })
   const handleEditChange = e => setEditForm({ ...editForm, [e.target.name]: e.target.value })
@@ -55,7 +72,7 @@ function CadastroSimples({ titulo, campos, tipo, uid }) {
     setLista(listaAtualizada)
     setForm({})
     setMsg("Cadastro realizado com sucesso!")
-    setTimeout(() => setMsg("") , 2000)
+    setTimeout(() => setMsg(""), 2000)
   }
 
   const handleEdit = item => {
@@ -65,13 +82,17 @@ function CadastroSimples({ titulo, campos, tipo, uid }) {
 
   const handleEditSubmit = async e => {
     e.preventDefault()
+    if (campos.some(c => !editForm[c.nome])) {
+      setMsg("Preencha todos os campos.")
+      return
+    }
     const listaAtualizada = updateInLocalStorage(tipo, editId, editForm)
     setLista(listaAtualizada)
     setEditId(null)
     setEditForm({})
     setMsg("Cadastro atualizado!")
-    setTimeout(() => setMsg("") , 2000)
-    await syncBackup(listaAtualizada)
+    setTimeout(() => setMsg(""), 2000)
+    // syncBackup já será chamado pelo useEffect([lista])
   }
 
   const handleDelete = id => setShowConfirm({ show: true, id })
@@ -81,8 +102,8 @@ function CadastroSimples({ titulo, campos, tipo, uid }) {
     setLista(listaAtualizada)
     setShowConfirm({ show: false, id: null })
     setMsg("Cadastro excluído!")
-    setTimeout(() => setMsg("") , 2000)
-    await syncBackup(listaAtualizada)
+    setTimeout(() => setMsg(""), 2000)
+    // syncBackup já será chamado pelo useEffect([lista])
   }
 
   const cancelDelete = () => setShowConfirm({ show: false, id: null })

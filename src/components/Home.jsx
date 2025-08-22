@@ -3,9 +3,8 @@ import { FaCheckCircle, FaClock, FaTimesCircle, FaPlus } from "react-icons/fa"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
 import { useState, useEffect } from "react"
 import Modal from "./Modal"
-import { useAuth } from "../contexts/AuthContext"
-import { addToLocalStorage, loadFromLocalStorage, saveToLocalStorage } from "../utils/localStorage"
-import { syncToFirebase } from "../utils/syncFirebase"
+import { auth, onAuthStateChanged } from "../firebase"
+import { addDesejo } from "../utils/syncFirebase"
 
 function nomeCompletoValido(nome) {
   if (!nome) return false
@@ -33,6 +32,13 @@ export default function Home({ desejos = [], setDesejos, vendedores = [], lojas 
     categoria: ""
   })
   const [syncError, setSyncError] = useState(false)
+  const [uid, setUid] = useState(null)
+
+  // Captura UID corretamente (SDK modular)
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => setUid(user?.uid || null))
+    return unsub
+  }, [])
 
   // Indicadores
   const total = desejos.length
@@ -101,10 +107,17 @@ export default function Home({ desejos = [], setDesejos, vendedores = [], lojas 
         ...form,
         valor: parseFloat(form.valor) || 0,
         status: "pendente",
-        createdAt: Date.now(),
-        id: Date.now().toString()
+        createdAt: Date.now()
+        // ⚠️ Não enviar "id" dentro do objeto para não conflitar com a key do Firebase
       }
+
+      // Atualiza UI imediatamente (otimista)
       setDesejos([...desejos, payload])
+
+      // Grava no Firebase (fonte principal)
+      if (!uid) throw new Error("Usuário não autenticado")
+      await addDesejo(uid, payload)
+
       setMsg("Desejo cadastrado com sucesso!")
       setTimeout(() => {
         fecharModal()
@@ -319,7 +332,7 @@ export default function Home({ desejos = [], setDesejos, vendedores = [], lojas 
           )}
           {syncError && (
             <div className="text-yellow-600 text-center mt-2">
-              Não foi possível sincronizar com o backup. Seus dados estão salvos localmente.
+              Não foi possível sincronizar com o banco. Seus dados continuam na tela.
             </div>
           )}
         </form>
