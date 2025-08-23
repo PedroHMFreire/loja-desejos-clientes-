@@ -5,7 +5,7 @@ import { getDesejos, addDesejo, updateDesejo, deleteDesejo } from "../utils/supa
 import { useAuth } from "../contexts/AuthContext"
 
 function gerarLinkWhatsapp(nome, tel, produto, vendedor) {
-  const msg = `Oi, ${sanitize(nome)}! Seu desejo é uma ordem, já estamos trabalhando no seu pedido! Segue abaixo os detalhes! Qualquer dúvida é só me chamar!\n\nProduto: ${sanitize(produto)}\nVendedor: ${sanitize(vendedor)}`
+  const msg = `Oi, ${sanitize(nome)}! Seu desejo é uma ordem. Nós já estamos trabalhando no seu pedido! Segue abaixo os detalhes! Qualquer dúvida é só me chamar!\n\nProduto: ${sanitize(produto)}\nVendedor: ${sanitize(vendedor)}`
   return `https://wa.me/55${tel.replace(/\D/g, "")}?text=${encodeURIComponent(msg)}`
 }
 function nomeCompletoValido(nome) {
