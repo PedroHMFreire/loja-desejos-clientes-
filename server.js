@@ -5,8 +5,8 @@ const app = express();
 const staticPath = path.join(__dirname, 'dist');
 app.use(express.static(staticPath));
 
-// SPA fallback: serve index.html para qualquer rota
-app.get('*', (req, res) => {
+// fallback sem usar path-to-regexp
+app.use((req, res) => {
   res.sendFile(path.join(staticPath, 'index.html'));
 });
 
