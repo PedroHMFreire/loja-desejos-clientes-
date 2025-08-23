@@ -1,8 +1,6 @@
 import { useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
-import { auth } from "../firebase.js"
-import { saveToLocalStorage, loadFromLocalStorage } from "../utils/localStorage"
-import { syncToFirebase } from "../utils/syncFirebase"
+// ...existing code...
 
 export default function CadastroAmbiente({ onCadastro }) {
   const [form, setForm] = useState({
@@ -36,37 +34,11 @@ export default function CadastroAmbiente({ onCadastro }) {
         email,
         telefone,
         senha,
-        role: "gerente",
-        ambienteId: nomeAmbiente // usa nomeAmbiente como id local
+        ambiente_id: nomeAmbiente
       })
-
-      // 2) Login automático
-      await login(email, senha)
-
-      // 3) Garante UID do usuário autenticado
-      const uid = auth.currentUser?.uid
-      if (!uid) {
-        setMsg("Não foi possível obter o usuário após o login.")
-        return
-      }
-
-      // 4) Salva o ambiente localmente
-      const ambiente = {
-        id: uid,
-        nome: nomeAmbiente,
-        gerenteEmail: email,
-        telefone,
-        criadoEm: Date.now()
-      }
-  saveToLocalStorage('ambiente', ambiente)
-
-  // Sincroniza sempre que ambiente muda
-  syncToFirebase(`users/${uid}/ambiente`, ambiente).catch(() => {})
-
-      setMsg("Cadastro realizado! Redirecionando...")
-      setTimeout(() => {
-        onCadastro?.()
-      }, 1000)
+      alert("Cadastro realizado com sucesso! Faça login para acessar o sistema.")
+      setMsg("")
+      window.location.href = "/login"
     } catch (err) {
       setMsg(err?.message || "Erro ao cadastrar.")
     }

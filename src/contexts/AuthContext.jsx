@@ -1,84 +1,72 @@
 import { createContext, useContext, useEffect, useState } from "react"
 import {
-  auth,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
+  signUp,
+  signIn,
   signOut,
-  createUserWithEmailAndPassword,
-  db,
-  ref,
-  set,
-  get,
-} from "../firebase.js"
+  getCurrentUser
+} from "../utils/supabaseAuth"
+import { supabase } from "../supabaseClient"
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)       // usuário do Firebase Auth
-  const [profile, setProfile] = useState(null) // dados extras (users/{uid}/profile)
-  const [role, setRole] = useState(null)
+  const [user, setUser] = useState(null)       // usuário do Supabase Auth
+  const [profile, setProfile] = useState(null) // dados extras (tabela usuarios)
   const [loading, setLoading] = useState(true)
 
-  // Observa sessão de login (login/logout/refresh) e carrega o perfil
+  // Observa sessão de login/logout
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      try {
-        if (!u) {
-          setUser(null)
-          setProfile(null)
-          setRole(null)
-          setLoading(false)
-          return
-        }
-        setUser(u)
-
-        // carrega profile do usuário
-        const snap = await get(ref(db, `users/${u.uid}/profile`))
-        const prof = snap.exists() ? snap.val() : null
-        setProfile(prof)
-        setRole(prof?.role || "gerente")
-      } finally {
+    const getUserAndProfile = async () => {
+      setLoading(true)
+      const { data, error } = await supabase.auth.getUser()
+      if (error || !data?.user) {
+        setUser(null)
+        setProfile(null)
         setLoading(false)
+        return
       }
+      setUser(data.user)
+      // Busca perfil na tabela usuarios
+      const { data: prof } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('id', data.user.id)
+        .single()
+      setProfile(prof || null)
+      setLoading(false)
+    }
+    getUserAndProfile()
+    // Listener para mudanças de sessão
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      getUserAndProfile()
     })
-    return () => unsub()
+    return () => {
+      listener?.subscription.unsubscribe()
+    }
   }, [])
 
   // Login
   const login = async (email, password) => {
-    await signInWithEmailAndPassword(auth, email, password)
-    // estados serão atualizados pelo onAuthStateChanged
+    await signIn({ email, password })
+    // estados serão atualizados pelo listener
   }
 
   // Logout
   const logout = async () => {
-    await signOut(auth)
-    // estados serão limpos pelo onAuthStateChanged
+    await signOut()
+    // estados serão limpos pelo listener
   }
 
-  // Cadastro de usuário (cria Auth + profile em users/{uid}/profile)
-  const cadastrarUsuario = async ({ nome, email, telefone, senha, role = "gerente" }) => {
-    const cred = await createUserWithEmailAndPassword(auth, email, senha)
-    const uid = cred.user.uid
-
-    await set(ref(db, `users/${uid}/profile`), {
-      uid,
-      nome,
-      email,
-      telefone,
-      role,
-      createdAt: Date.now(),
-    })
-
-    // não faz login automático aqui; quem controla é a tela chamadora
-    return { uid, nome, email, telefone, role }
+  // Cadastro de usuário (cria Auth + perfil na tabela usuarios)
+  const cadastrarUsuario = async ({ nome, email, telefone, senha }) => {
+    await signUp({ nome, email, telefone, password: senha })
+    // estados serão atualizados pelo listener
   }
 
 const value = {
-  user,         // objeto do Firebase Auth (tem uid, email, etc.)
-  profile,      // { nome, telefone, role, ... } de users/{uid}/profile
-  role,
-  ambienteId: profile?.ambienteId || null, // <-- Adicione esta linha
+  user,         // objeto do Supabase Auth (tem id, email, etc.)
+  profile,      // { nome, telefone, ... } da tabela usuarios
+  ambienteId: profile?.ambiente_id || null,
   loading,
   login,
   logout,

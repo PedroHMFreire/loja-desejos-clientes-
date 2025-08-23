@@ -3,19 +3,13 @@ import { useState, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
-import { loadFromLocalStorage } from '../utils/localStorage'
-import { auth, onAuthStateChanged, db, ref, set } from '../firebase'
+// ...existing code...
+// Removido firebase
 
 export default function Ranking({ desejos = [] }) {
   const [filtros, setFiltros] = useState({ vendedor: '', loja: '', dataInicial: '', dataFinal: '' })
   const [msg, setMsg] = useState("")
-  const [uid, setUid] = useState(null)
-
-  // Captura UID corretamente (SDK modular)
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, user => setUid(user?.uid || null))
-    return unsub
-  }, [])
+  // Removido UID e useEffect do firebase
 
   const handleFiltro = e => setFiltros({ ...filtros, [e.target.name]: e.target.value })
 
@@ -68,18 +62,7 @@ export default function Ranking({ desejos = [] }) {
     doc.save("ranking.pdf")
   }
 
-  // Backup manual (opcional): salva um snapshot do array de desejos em /backups
-  const backupFirebase = async () => {
-    try {
-      if (!uid) throw new Error("Sem usuário logado")
-      const ts = Date.now()
-      await set(ref(db, `users/${uid}/backups/desejos/${ts}`), desejos)
-      setMsg('Backup realizado com sucesso!')
-    } catch (e) {
-      setMsg('Falha ao realizar backup!')
-    }
-    setTimeout(() => setMsg(''), 2000)
-  }
+  // Backup Firebase removido
 
   const vendedoresUnicos = [...new Set(desejos.map(d => d.vendedor).filter(Boolean))]
   const lojasUnicas = [...new Set(desejos.map(d => d.loja).filter(Boolean))]
@@ -107,9 +90,7 @@ export default function Ranking({ desejos = [] }) {
         <button onClick={exportarPDF} className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50" disabled={rankingArray.length === 0}>
           Exportar PDF
         </button>
-        <button onClick={backupFirebase} className="bg-orange-500 text-white px-4 py-2 rounded">
-          Backup Firebase
-        </button>
+  {/* Botão de backup removido */}
         <button onClick={() => setFiltros({ vendedor: '', loja: '', dataInicial: '', dataFinal: '' })} className="bg-gray-400 text-white px-4 py-2 rounded ml-auto">
           Limpar Filtros
         </button>

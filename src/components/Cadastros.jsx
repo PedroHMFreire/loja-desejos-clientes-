@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react"
 import { FaPlus, FaEdit, FaTrash } from "react-icons/fa"
 import { useAuth } from "../contexts/AuthContext"
-import { addToLocalStorage, loadFromLocalStorage, updateInLocalStorage, removeFromLocalStorage, saveToLocalStorage } from "../utils/localStorage"
-import { syncToFirebase } from "../utils/syncFirebase"
+// ...existing code...
+import { getCadastros, addCadastro, updateCadastro, deleteCadastro } from "../utils/supabaseCrud"
 
 function CadastroSimples({ titulo, campos, tipo, uid }) {
   const [form, setForm] = useState({})
@@ -11,52 +11,18 @@ function CadastroSimples({ titulo, campos, tipo, uid }) {
   const [msg, setMsg] = useState("")
   const [showConfirm, setShowConfirm] = useState({ show: false, id: null })
   const [lista, setLista] = useState([])
-  const [syncError, setSyncError] = useState(false)
 
-  // 🔧 helper: envia o snapshot atual para o Firebase
-  const syncBackup = async (data) => {
-    if (!uid) return
-    try {
-      await syncToFirebase(`users/${uid}/${tipo}`, data) // grava exatamente o que está em "data"
-      setSyncError(false)
-    } catch (e) {
-      console.warn("[Cadastros] Falha no backup:", e)
-      setSyncError(true)
-    }
-  }
-
-  // Carregar do Local Storage. Se vazio, buscar do Firebase.
+  // Carregar do Supabase
   useEffect(() => {
-    const local = loadFromLocalStorage(tipo)
-    if (local && local.length > 0) {
-      setLista(local)
-    } else if (uid) {
-      import("../firebase.js").then(({ db, ref, get }) => {
-        get(ref(db, `users/${uid}/${tipo}`)).then(snap => {
-          if (snap.exists()) {
-            const dados = snap.val() || []
-            // suporta tanto objeto {id: item} quanto array
-            const listaBanco = Array.isArray(dados)
-              ? dados.map((item, idx) => ({ id: item?.id ?? String(idx), ...item }))
-              : Object.entries(dados).map(([id, item]) => ({ id, ...item }))
-
-            setLista(listaBanco)
-            saveToLocalStorage(tipo, listaBanco)
-          } else {
-            setLista([])
-          }
-        }).catch(err => {
-          console.warn("[Cadastros] Falha ao ler do Firebase:", err)
+    if (uid) {
+      getCadastros(uid, tipo)
+        .then(data => setLista(data))
+        .catch(err => {
+          setMsg("Erro ao carregar cadastros.")
+          console.warn("[Cadastros] Falha ao ler do Supabase:", err)
         })
-      })
     }
   }, [uid, tipo])
-
-  // Sincroniza sempre que a lista muda (inclusive quando esvazia)
-  useEffect(() => {
-    if (!uid) return
-    syncBackup(lista)
-  }, [lista, uid]) // tipo é fixo por instância
 
   const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value })
   const handleEditChange = e => setEditForm({ ...editForm, [e.target.name]: e.target.value })
@@ -67,12 +33,15 @@ function CadastroSimples({ titulo, campos, tipo, uid }) {
       setMsg("Preencha todos os campos.")
       return
     }
-    const novoItem = { ...form, id: Date.now().toString() }
-    const listaAtualizada = addToLocalStorage(tipo, novoItem)
-    setLista(listaAtualizada)
+    try {
+      const novo = await addCadastro(uid, tipo, form)
+      setLista([...lista, novo])
+      setMsg("Cadastro realizado com sucesso!")
+    } catch (err) {
+      setMsg(err?.message || "Erro ao salvar no Supabase.")
+    }
     setForm({})
-    setMsg("Cadastro realizado com sucesso!")
-    setTimeout(() => setMsg(""), 2000)
+    setTimeout(() => setMsg("") , 4000)
   }
 
   const handleEdit = item => {
@@ -86,24 +55,30 @@ function CadastroSimples({ titulo, campos, tipo, uid }) {
       setMsg("Preencha todos os campos.")
       return
     }
-    const listaAtualizada = updateInLocalStorage(tipo, editId, editForm)
-    setLista(listaAtualizada)
+    try {
+      const atualizado = await updateCadastro(tipo, editId, editForm)
+      setLista(lista.map(item => item.id === editId ? atualizado : item))
+      setMsg("Cadastro atualizado!")
+    } catch {
+      setMsg("Erro ao atualizar no Supabase.")
+    }
     setEditId(null)
     setEditForm({})
-    setMsg("Cadastro atualizado!")
-    setTimeout(() => setMsg(""), 2000)
-    // syncBackup já será chamado pelo useEffect([lista])
+    setTimeout(() => setMsg("") , 2000)
   }
 
   const handleDelete = id => setShowConfirm({ show: true, id })
 
   const confirmDelete = async () => {
-    const listaAtualizada = removeFromLocalStorage(tipo, showConfirm.id)
-    setLista(listaAtualizada)
+    try {
+      await deleteCadastro(tipo, showConfirm.id)
+      setLista(lista.filter(item => item.id !== showConfirm.id))
+      setMsg("Cadastro excluído!")
+    } catch {
+      setMsg("Erro ao excluir no Supabase.")
+    }
     setShowConfirm({ show: false, id: null })
-    setMsg("Cadastro excluído!")
-    setTimeout(() => setMsg(""), 2000)
-    // syncBackup já será chamado pelo useEffect([lista])
+    setTimeout(() => setMsg("") , 2000)
   }
 
   const cancelDelete = () => setShowConfirm({ show: false, id: null })
@@ -144,11 +119,7 @@ function CadastroSimples({ titulo, campos, tipo, uid }) {
           {msg}
         </div>
       )}
-      {syncError && (
-        <div className="text-yellow-600 text-center mt-2">
-          Não foi possível sincronizar com o backup. Seus dados estão salvos localmente.
-        </div>
-      )}
+  {/* Supabase não precisa syncError/local backup */}
 
       <ul className="space-y-2">
         {lista.map(item => (
@@ -210,7 +181,7 @@ export default function Cadastros() {
     return <div className="p-6 text-center text-red-600">Faça login para acessar os cadastros.</div>
   }
 
-  const uid = user.uid
+  const uid = user.id
 
   return (
     <div className="max-w-2xl mx-auto mt-8 px-2 w-full">

@@ -10,9 +10,7 @@ export default function Navbar() {
   <>
     <Link to="/home" className="block px-3 py-2 rounded hover:bg-primary/80">Home</Link>
     <Link to="/desejos" className="block px-3 py-2 rounded hover:bg-primary/80">Desejos</Link>
-    {role === 'gerente' && (
-      <Link to="/cadastros" className="block px-3 py-2 rounded hover:bg-primary/80">Cadastros</Link>
-    )}
+  <Link to="/cadastros" className="block px-3 py-2 rounded hover:bg-primary/80">Cadastros</Link>
     {user ? (
       <button onClick={logout} className="block px-3 py-2 rounded hover:bg-primary/80 text-left w-full md:w-auto">Sair</button>
     ) : (

@@ -28,14 +28,12 @@ export default function Login() {
       // sucesso → manda pra raiz protegida
       navigate("/")
     } catch (err) {
-      // mapeia códigos comuns do Firebase Auth
-      const code = err?.code || ""
-      let msg = "E-mail ou senha inválidos."
-      if (code.includes("invalid-email")) msg = "E-mail inválido."
-      if (code.includes("user-not-found")) msg = "Usuário não encontrado."
-      if (code.includes("wrong-password") || code.includes("invalid-credential")) msg = "Senha incorreta."
-      if (code.includes("too-many-requests")) msg = "Muitas tentativas. Tente novamente mais tarde."
-      setError(msg)
+      // Supabase pode retornar "Email not confirmed". Ignorar e mostrar erro genérico.
+      if (err?.message && err.message.toLowerCase().includes("email not confirmed")) {
+        setError("E-mail ou senha inválidos.")
+      } else {
+        setError(err.message || "E-mail ou senha inválidos.")
+      }
     } finally {
       setLoading(false)
     }

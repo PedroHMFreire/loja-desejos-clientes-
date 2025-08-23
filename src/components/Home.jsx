@@ -3,8 +3,8 @@ import { FaCheckCircle, FaClock, FaTimesCircle, FaPlus } from "react-icons/fa"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
 import { useState, useEffect } from "react"
 import Modal from "./Modal"
-import { auth, onAuthStateChanged } from "../firebase"
-import { addDesejo } from "../utils/syncFirebase"
+import { useAuth } from "../contexts/AuthContext"
+import { addDesejo } from "../utils/supabaseCrud"
 
 function nomeCompletoValido(nome) {
   if (!nome) return false
@@ -27,18 +27,26 @@ export default function Home({ desejos = [], setDesejos, vendedores = [], lojas 
     produto: "",
     tamanho: "",
     valor: "",
-    vendedor: "",
-    loja: "",
-    categoria: ""
+    vendedor_id: "",
+    loja_id: "",
+    categoria_id: ""
   })
   const [syncError, setSyncError] = useState(false)
-  const [uid, setUid] = useState(null)
+  const { user } = useAuth()
+  const uid = user?.id
 
-  // Captura UID corretamente (SDK modular)
+  // Função para buscar todos os dados
+  async function fetchAll() {
+    if (!uid) return
+    setDesejos(await getDesejos(uid))
+    setVendedores(await getCadastros(uid, "vendedores"))
+    setLojas(await getCadastros(uid, "lojas"))
+    setCategorias(await getCadastros(uid, "categorias"))
+  }
+
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => setUid(user?.uid || null))
-    return unsub
-  }, [])
+    fetchAll()
+  }, [uid])
 
   // Indicadores
   const total = desejos.length
@@ -47,18 +55,18 @@ export default function Home({ desejos = [], setDesejos, vendedores = [], lojas 
   const desistidos = desejos.filter(d => d.status === "desistido").length
   const valorTotal = desejos.reduce((acc, d) => acc + (parseFloat(d.valor) || 0), 0)
 
-  // Gráficos (com proteção)
+  // Gráficos (corrigido para usar IDs)
   const lojasData = Array.isArray(lojas)
     ? lojas.map(loja => ({
         name: loja.nome,
-        value: desejos.filter(d => d.loja === loja.nome).length
+        value: desejos.filter(d => d.loja_id === loja.id).length
       }))
     : []
 
   const vendedoresData = Array.isArray(vendedores)
     ? vendedores.map(v => ({
         name: v.nome,
-        value: desejos.filter(d => d.vendedor === v.nome).length
+        value: desejos.filter(d => d.vendedor_id === v.id).length
       }))
     : []
 
@@ -97,24 +105,28 @@ export default function Home({ desejos = [], setDesejos, vendedores = [], lojas 
       setMsg("Digite o nome e sobrenome do cliente (mínimo 2 letras cada).")
       return
     }
-    if (!form.tel || !form.produto || !form.tamanho || !form.valor || !form.vendedor || !form.loja) {
+    if (!form.tel || !form.produto || !form.tamanho || !form.valor || !form.vendedor_id || !form.loja_id) {
       setMsg("Preencha todos os campos obrigatórios.")
       return
     }
 
     try {
       const payload = {
-        ...form,
+        nome: form.nome,
+        tel: form.tel,
+        produto: form.produto,
+        tamanho: form.tamanho,
         valor: parseFloat(form.valor) || 0,
-        status: "pendente",
-        createdAt: Date.now()
-        // ⚠️ Não enviar "id" dentro do objeto para não conflitar com a key do Firebase
+        vendedor_id: form.vendedor_id,
+        loja_id: form.loja_id,
+        categoria_id: form.categoria_id || null,
+        status: "pendente"
       }
 
       // Atualiza UI imediatamente (otimista)
       setDesejos([...desejos, payload])
 
-      // Grava no Firebase (fonte principal)
+      // Grava no Supabase
       if (!uid) throw new Error("Usuário não autenticado")
       await addDesejo(uid, payload)
 
@@ -283,38 +295,38 @@ export default function Home({ desejos = [], setDesejos, vendedores = [], lojas 
             required
           />
           <select
-            name="vendedor"
-            value={form.vendedor}
+            name="vendedor_id"
+            value={form.vendedor_id}
             onChange={handleChange}
             className="w-full p-2 border rounded"
             required
           >
             <option value="">Selecione o vendedor*</option>
             {vendedores.map(v => (
-              <option key={v.id || v.nome} value={v.nome}>{v.nome}</option>
+              <option key={v.id} value={v.id}>{v.nome}</option>
             ))}
           </select>
           <select
-            name="loja"
-            value={form.loja}
+            name="loja_id"
+            value={form.loja_id}
             onChange={handleChange}
             className="w-full p-2 border rounded"
             required
           >
             <option value="">Selecione a loja*</option>
             {lojas.map(l => (
-              <option key={l.id || l.nome} value={l.nome}>{l.nome}</option>
+              <option key={l.id} value={l.id}>{l.nome}</option>
             ))}
           </select>
           <select
-            name="categoria"
-            value={form.categoria}
+            name="categoria_id"
+            value={form.categoria_id}
             onChange={handleChange}
             className="w-full p-2 border rounded"
           >
             <option value="">Selecione a categoria</option>
             {categorias.map(c => (
-              <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+              <option key={c.id} value={c.id}>{c.nome}</option>
             ))}
           </select>
           <div className="flex flex-col sm:flex-row justify-end gap-2">
