@@ -10,3 +10,10 @@ html, body, #root {
 body {
   @apply font-sans bg-white text-gray-900;
 }
+
+/* Força fundo branco em inputs/selects/textareas em todos os dispositivos */
+input, select, textarea {
+  background-color: #fff !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
