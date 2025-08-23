@@ -132,6 +132,7 @@ export default function Desejos({ vendedores, lojas, categorias }) {
       const desejo = await addDesejo(uid, novo)
       setDesejos([...desejos, desejo])
       setMsg("Desejo cadastrado com sucesso!")
+      setModalAberto(false) // Fecha o modal após cadastro
     } catch {
       setMsg("Erro ao salvar no Supabase.")
     }
