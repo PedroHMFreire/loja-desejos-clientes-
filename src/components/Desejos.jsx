@@ -262,11 +262,11 @@ export default function Desejos({ vendedores, lojas, categorias }) {
             <h2 className="text-xl font-bold mb-4">Cadastrar desejo</h2>
             <form onSubmit={editId ? handleEditSubmit : handleSubmit} className="space-y-3">
               <input name="nome" value={editId ? (editForm.nome || "") : form.nome} onChange={editId ? handleEditChange : handleChange} placeholder="Nome completo" className="w-full p-2 border rounded" />
-              <input name="tel" value={editId ? (editForm.tel || "") : form.tel} onChange={editId ? handleEditChange : handleChange} placeholder="Telefone" className="w-full p-2 border rounded" />
-              <input name="produto" value={editId ? (editForm.produto || "") : form.produto} onChange={editId ? handleEditChange : handleChange} placeholder="Produto desejado" className="w-full p-2 border rounded" />
-              <input name="tamanho" value={editId ? (editForm.tamanho || "") : form.tamanho} onChange={editId ? handleEditChange : handleChange} placeholder="Tamanho" className="w-full p-2 border rounded" />
-              <input name="valor" value={editId ? (editForm.valor || "") : form.valor} onChange={editId ? handleEditChange : handleChange} placeholder="Valor" className="w-full p-2 border rounded" inputMode="decimal" />
-              <select name="vendedor_id" value={editId ? (editForm.vendedor_id || "") : form.vendedor_id} onChange={editId ? handleEditChange : handleChange} className="w-full p-2 border rounded">
+              <input name="tel" value={editId ? (editForm.tel || "") : form.tel} onChange={editId ? handleEditChange : handleChange} placeholder="Telefone" className="w-full p-2 border rounded bg-white" />
+              <input name="produto" value={editId ? (editForm.produto || "") : form.produto} onChange={editId ? handleEditChange : handleChange} placeholder="Produto desejado" className="w-full p-2 border rounded bg-white" />
+              <input name="tamanho" value={editId ? (editForm.tamanho || "") : form.tamanho} onChange={editId ? handleEditChange : handleChange} placeholder="Tamanho" className="w-full p-2 border rounded bg-white" />
+              <input name="valor" value={editId ? (editForm.valor || "") : form.valor} onChange={editId ? handleEditChange : handleChange} placeholder="Valor" className="w-full p-2 border rounded bg-white" inputMode="decimal" />
+              <select name="vendedor_id" value={editId ? (editForm.vendedor_id || "") : form.vendedor_id} onChange={editId ? handleEditChange : handleChange} className="w-full p-2 border rounded bg-white">
                 <option value="">Selecione o vendedor</option>
                 {vendedores?.map(v => (<option key={v.id} value={v.id}>{v.nome}</option>))}
               </select>
@@ -274,7 +274,7 @@ export default function Desejos({ vendedores, lojas, categorias }) {
                 <option value="">Selecione a loja</option>
                 {lojas?.map(l => (<option key={l.id} value={l.id}>{l.nome}</option>))}
               </select>
-              <select name="categoria_id" value={editId ? (editForm.categoria_id || "") : form.categoria_id} onChange={editId ? handleEditChange : handleChange} className="w-full p-2 border rounded">
+              <select name="categoria_id" value={editId ? (editForm.categoria_id || "") : form.categoria_id} onChange={editId ? handleEditChange : handleChange} className="w-full p-2 border rounded bg-white">
                 <option value="">Selecione a categoria</option>
                 {categorias?.map(c => (<option key={c.id} value={c.id}>{c.nome}</option>))}
               </select>
