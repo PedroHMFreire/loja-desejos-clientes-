@@ -43,7 +43,7 @@ export default function Login() {
     <div className="h-auto flex flex-col items-center justify-start pt-8 bg-gray-100">
       {/* Logomarca */}
       <div className="mb-6">
-        <span className="text-4xl font-bold text-primary">Anot.AI</span>
+        <span className="text-4xl font-bold text-primary">Anote.AI</span>
       </div>
 
       {/* Slogan */}
